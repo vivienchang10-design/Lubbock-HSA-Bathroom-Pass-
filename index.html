@@ -192,6 +192,31 @@
       await refreshToday();
       await loadHistory();
     };
-  </script>
+  <!-- Firebase App (core) -->
+<script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+<!-- Firebase Auth -->
+<script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-auth-compat.js"></script>
+<!-- Firebase Firestore -->
+<script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-firestore-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
+    authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
+    projectId: "lubbock-hsa-bathroom-pass",
+    storageBucket: "lubbock-hsa-bathroom-pass.appspot.com",
+    messagingSenderId: "20266028833",
+    appId: "1:20266028833:web:5219b6cfa07da654807860",
+    measurementId: "G-ENKQZMW0H8"
+  };
+
+  // 初始化 Firebase
+  firebase.initializeApp(firebaseConfig);
+
+  // 全局变量
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+</script>
+
 </body>
 </html>
