@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Harmony Bathroom Pass App</title>
+  <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js"></script>
+</head>
+<body>
+  <h1>Teacher Login</h1>
+  <div>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+  </div>
+  <div id="app" style="display:none;">
+    <h2>Bathroom Pass Tracker</h2>
+    <input id="studentName" placeholder="Student Name">
+    <button onclick="logBathroomPass()">Record Bathroom Pass</button>
+    <p id="status"></p>
+  </div>
+
+  <script>
+    // Firebase 配置
+    const firebaseConfig = {
+      apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
+      authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
+      projectId: "lubbock-hsa-bathroom-pass",
+      storageBucket: "lubbock-hsa-bathroom-pass.appspot.com",
+      messagingSenderId: "20266028833",
+      appId: "1:20266028833:web:5219b6cfa07da654807860",
+      measurementId: "G-ENKQZMW0H8"
+    };
+
+    // 初始化 Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // 登录函数
+    function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+          document.getElementById("app").style.display = "block";
+        })
+        .catch(error => alert(error.message));
+    }
+
+    // 记录厕所使用
+    function logBathroomPass() {
+      const student = document.getElementById("studentName").value;
+      if (!student) {
+        alert("Please enter a student name.");
+        return;
+      }
+      const today = new Date().toISOString().split('T')[0];
+      const docRef = db.collection("bathroomLogs").doc(`${student}_${today}`);
+      docRef.get().then(doc => {
+        if (doc.exists) {
+          const data = doc.data();
+          if (data.count >= 3) {
+            document.getElementById("status").innerText = student + " 已达到3次限制，禁止再次上厕所。";
+          } else {
+            docRef.update({ count: data.count + 1 });
+            document.getElementById("status").innerText = student + " 已记录一次厕所使用。";
+          }
+        } else {
+          docRef.set({ count: 1 });
+          document.getElementById("status").innerText = student + " 已记录第一次厕所使用。";
+        }
+      });
+    }
+  </script>
+</body>
+</html>
