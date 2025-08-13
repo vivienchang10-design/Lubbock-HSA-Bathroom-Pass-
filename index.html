@@ -5,30 +5,32 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>HSA Lubbock · Bathroom Pass</title>
 
-  <!-- 内置一个小图标，避免 /favicon.ico 404 -->
+  <!-- 内置小图标，避免 /favicon.ico 404 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23005BBB'/%3E%3Cpath d='M20 18h24v6H20zM24 28h16v18H24z' fill='%23FFD500'/%3E%3C/svg%3E" />
 
   <style>
-    :root { --pad: 14px; --radius: 16px; --border:#ddd; --muted:#666; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; color:#111; background:#fff; }
+    :root { --pad:14px; --radius:16px; --border:#ddd; --muted:#666; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; margin:0; color:#111; background:#fff; }
     header, main { max-width: 900px; margin: 0 auto; padding: var(--pad); }
     .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
     .grow { flex:1; }
-    .card { border:1px solid var(--border); border-radius: var(--radius); padding: var(--pad); box-shadow: 0 1px 4px rgba(0,0,0,.04); background:#fff; }
-    input[type=text] { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--border); font-size:16px; }
+    .card { border:1px solid var(--border); border-radius:var(--radius); padding:var(--pad); box-shadow:0 1px 4px rgba(0,0,0,.04); background:#fff; }
+    input[type=text], input[type=number] { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--border); font-size:16px; }
+    .readonly { background:#fafafa; }
     button { padding:12px 16px; border:1px solid var(--border); border-radius:12px; background:#fff; cursor:pointer; font-size:16px; }
     button.primary { border-color:#222; }
-    .muted { color: var(--muted); font-size: 12px; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .muted { color:var(--muted); font-size:12px; }
     .grid { display:grid; grid-template-columns:1fr; gap:16px; }
-    @media (min-width: 780px){ .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width:780px){ .grid{ grid-template-columns:1fr 1fr; } }
     ul { list-style:none; padding:0; margin:0; }
     li.item { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
     .badge { font-size:12px; border:1px solid var(--border); border-radius:999px; padding:3px 8px; }
     .danger { color:#b00020; font-weight:600; }
-    table { width:100%; border-collapse: collapse; }
+    table { width:100%; border-collapse:collapse; }
     th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
     th { font-size:12px; color:#444; }
-    .hidden{ display:none; }
+    .hidden { display:none; }
     .alert { border:1px dashed #f3b; background:#fff7fb; padding:10px 12px; border-radius:12px; margin-top:8px; }
   </style>
 
@@ -58,13 +60,29 @@
   <!-- Quick Record -->
   <section class="card">
     <h2 style="margin:0 0 10px;">Quick Record</h2>
-    <form id="recordForm" class="row" autocomplete="off">
-      <input id="studentInput" class="grow" type="text" placeholder="Student Name" required />
-      <label class="row" style="gap:6px; font-size:14px;"><input id="emg" type="checkbox" /> Emergency/Exempt</label>
-      <button type="submit" class="primary">Record</button>
+    <form id="recordForm" autocomplete="off">
+      <div class="row">
+        <div style="min-width:140px">
+          <label class="muted">Student # (1–600)</label>
+          <input id="studentNumber" type="number" min="1" max="600" placeholder="e.g. 123" required />
+        </div>
+        <div class="grow">
+          <label class="muted">Name (auto)</label>
+          <input id="studentName" class="readonly" type="text" placeholder="—" readonly />
+        </div>
+        <div style="min-width:160px">
+          <label class="muted">Grade (auto)</label>
+          <input id="studentGrade" class="readonly" type="text" placeholder="—" readonly />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="row" style="gap:6px; font-size:14px;">
+          <input id="emg" type="checkbox" /> Emergency/Exempt
+        </label>
+        <button id="recordBtn" type="submit" class="primary" disabled>Record</button>
+      </div>
     </form>
-    <div class="muted" style="margin-top:6px;">• Max 3 per day (America/Chicago). Emergency entries don’t count.</div>
-    <div id="msg" class="muted" style="margin-top:6px;"></div>
+    <div id="msg" class="muted" style="margin-top:6px;">• 输入编号后会自动显示姓名与年级；未找到编号将无法提交。</div>
     <div id="domainAlert" class="alert hidden"></div>
   </section>
 
@@ -78,14 +96,14 @@
     <div class="card">
       <h3 style="margin:0 0 8px;">Latest Records (today)</h3>
       <table>
-        <thead><tr><th>Time (CT)</th><th>Student</th><th>Teacher</th><th>Emergency</th></tr></thead>
+        <thead><tr><th>Time (CT)</th><th>Student</th><th>Grade</th><th>Teacher</th><th>Emergency</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
   </section>
 </main>
 
-<!-- ✅ 使用 compat 版 SDK（非模块版） -->
+<!-- ✅ compat 版 SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
@@ -110,15 +128,18 @@ const whoEl = document.getElementById('who');
 const loginBtn = document.getElementById('loginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const form = document.getElementById('recordForm');
-const input = document.getElementById('studentInput');
+const numInput = document.getElementById('studentNumber');
+const nameOutput = document.getElementById('studentName');
+const gradeOutput = document.getElementById('studentGrade');
 const emg = document.getElementById('emg');
+const recordBtn = document.getElementById('recordBtn');
 const list = document.getElementById('list');
 const tbody = document.getElementById('tbody');
 const msg = document.getElementById('msg');
 const emptyMsg = document.getElementById('emptyMsg');
 const domainAlert = document.getElementById('domainAlert');
 
-// ===== Helpers: Chicago 时区的 dayKey / 时间格式 =====
+// ===== Helpers: Chicago 时区 dayKey / 时间格式 =====
 function chicagoDayParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(date);
   const y = parts.find(p=>p.type==='year').value;
@@ -128,29 +149,90 @@ function chicagoDayParts(date = new Date()) {
 }
 function chicagoDayKey(date = new Date()) {
   const {y,m,d} = chicagoDayParts(date);
-  return `${y}-${m}-${d}`; // e.g. 2025-08-12
+  return `${y}-${m}-${d}`;
 }
 function formatChicago(ts){
   const date = ts?.toDate ? ts.toDate() : new Date(ts);
   return new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
 }
 
+// ===== 学生名册内存索引（可选：若你学生很多，也可以用 where 查询单个编号）=====
+let rosterByNumber = new Map(); // number -> {id, number, name, grade}
+async function loadRosterOnce() {
+  // 读取全部 students（600 条量级，前端缓存 OK）
+  const snap = await db.collection('students').get();
+  rosterByNumber = new Map(
+    snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(s => typeof s.number === 'number' && s.number >= 1)
+      .map(s => [s.number, s])
+  );
+}
+
+// ===== 输入编号后自动显示姓名+年级 =====
+async function resolveStudentByNumber(n) {
+  if (!n) return null;
+  let s = rosterByNumber.get(n);
+  // 若没缓存到，再试一次单条查询（以防你没导入全部数据）
+  if (!s) {
+    const q = await db.collection('students').where('number','==', n).limit(1).get();
+    if (!q.empty) {
+      const d = q.docs[0];
+      s = { id: d.id, ...d.data() };
+      rosterByNumber.set(n, s);
+    }
+  }
+  return s || null;
+}
+numInput.addEventListener('input', async () => {
+  const n = parseInt(numInput.value, 10);
+  if (!Number.isInteger(n) || n < 1 || n > 600) {
+    nameOutput.value = '';
+    gradeOutput.value = '';
+    recordBtn.disabled = true;
+    msg.textContent = '请输入 1–600 的学生编号。';
+    return;
+  }
+  const s = await resolveStudentByNumber(n);
+  if (!s) {
+    nameOutput.value = '';
+    gradeOutput.value = '';
+    recordBtn.disabled = true;
+    msg.textContent = '未找到该学生编号，请检查 students 集合。';
+  } else {
+    nameOutput.value = s.name || '';
+    gradeOutput.value = s.grade || '';
+    recordBtn.disabled = false;
+    msg.textContent = '';
+  }
+});
+
 // ===== 状态 =====
-let todaysRows = [];     // 今天的全部 passes（用于计数与表格）
-let unsubscribe = null;  // Firestore 监听
+let todaysRows = [];     // 今天的全部 passes
+let unsubscribe = null;
 
 // ===== 渲染 =====
 function renderCounts(rows){
-  const counts = {};
-  rows.forEach(p => { if (!p.isEmergency) counts[p.studentName] = (counts[p.studentName]||0)+1; });
+  // 统计按 studentNumber
+  const counts = new Map(); // number -> {count, name, grade}
+  rows.forEach(p => {
+    if (p.isEmergency) return; // 紧急不计数
+    const num = p.studentNumber;
+    const n = (rosterByNumber.get(num)?.name) || p.studentName || `#${num}`;
+    const g = (rosterByNumber.get(num)?.grade) || p.grade || '';
+    const cur = counts.get(num) || { count:0, name:n, grade:g };
+    cur.count += 1;
+    counts.set(num, cur);
+  });
 
   list.innerHTML = '';
-  const entries = Object.entries(counts);
-  emptyMsg.style.display = entries.length ? 'none' : 'block';
-  entries.forEach(([name, c])=>{
+  const items = [...counts.entries()].sort((a,b)=> b[1].count - a[1].count);
+  emptyMsg.style.display = items.length ? 'none' : 'block';
+  items.forEach(([num, info])=>{
     const li = document.createElement('li');
     li.className = 'item';
-    li.innerHTML = `<span>${name}</span><span class="badge ${c>=3?'danger':''}">${c}/3</span>`;
+    li.innerHTML = `<span>#${num} — ${info.name}${info.grade?(' — G'+info.grade):''}</span>
+                    <span class="badge ${info.count>=3?'danger':''}">${info.count}/3</span>`;
     list.appendChild(li);
   });
 }
@@ -162,16 +244,20 @@ function renderTable(rows){
   });
   tbody.innerHTML = '';
   sorted.forEach(p=>{
+    const s = rosterByNumber.get(p.studentNumber) || {};
+    const name = s.name || p.studentName || `#${p.studentNumber}`;
+    const grade = s.grade || p.grade || '';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.createdAt ? formatChicago(p.createdAt) : ''}</td>
-                    <td>${p.studentName || ''}</td>
+                    <td>${name}</td>
+                    <td>${grade}</td>
                     <td>${p.teacherEmail || ''}</td>
                     <td>${p.isEmergency ? 'Yes':'No'}</td>`;
     tbody.appendChild(tr);
   });
 }
 
-// ===== 订阅今天的数据：只按 dayKey（稳定，不涉索引/时区坑）=====
+// ===== 订阅今天的数据：按 dayKey（稳定，不涉时区/索引）=====
 function watchToday(){
   if (unsubscribe) unsubscribe();
   const key = chicagoDayKey(new Date());
@@ -189,49 +275,57 @@ function watchToday(){
     });
 }
 
-// ===== 提交记录：前端判断 3 次上限 + 30 秒防重复 =====
-const lastClick = new Map(); // per-student 30s guard
+// ===== 提交记录：按 studentNumber 判断 3 次上限 + 30 秒防重复 =====
+const lastClick = new Map(); // per-studentNumber 30s guard
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const u = auth.currentUser;
   if (!u) { alert('Please sign in.'); return; }
 
-  const name = input.value.trim();
-  if (!name) return;
+  const n = parseInt(numInput.value, 10);
+  if (!Number.isInteger(n) || n < 1 || n > 600) {
+    msg.textContent = '请输入 1–600 的学生编号。';
+    return;
+  }
+  const s = await resolveStudentByNumber(n);
+  if (!s) {
+    msg.textContent = '未找到该学生编号，请检查 students 集合。';
+    return;
+  }
   const emergency = !!emg.checked;
 
   // 30s 防重复
   const nowMs = Date.now();
-  const last = lastClick.get(name);
+  const last = lastClick.get(n);
   if (last && (nowMs - last) < 30_000) {
     msg.textContent = 'Duplicate click ignored (within 30s).';
-    input.value = ''; emg.checked = false;
     return;
   }
 
-  // 计算今天该学生的非紧急次数
+  // 今天该学生的非紧急次数（按 number）
   const nonEmergencyCount = todaysRows.reduce((acc, p)=>{
-    return acc + ((p.studentName === name && !p.isEmergency) ? 1 : 0);
+    return acc + ((p.studentNumber === n && !p.isEmergency) ? 1 : 0);
   }, 0);
   if (!emergency && nonEmergencyCount >= 3) {
     msg.textContent = 'Reached daily limit (3).';
-    input.value = ''; emg.checked = false;
     return;
   }
 
   try{
     await db.collection('passes').add({
-      studentName: name,
+      studentNumber: n,
+      studentName: s.name || '',
+      grade: s.grade || '',
       teacherUid: u.uid,
       teacherEmail: u.email || '',
       isEmergency: emergency,
       createdAt: firebase.firestore.Timestamp.now(), // 立即可见
       dayKey: chicagoDayKey(new Date())
     });
-    lastClick.set(name, Date.now());
+    lastClick.set(n, Date.now());
     msg.textContent = 'Recorded ✅';
-    input.value = ''; emg.checked = false;
-    // onSnapshot 会自动更新列表
+    // 保持输入框不清空，方便同一学生多次操作；如需清空请解除下面两行注释：
+    // numInput.value = ''; nameOutput.value = ''; gradeOutput.value = ''; recordBtn.disabled = true; 
   }catch(err){
     console.error(err);
     alert('Creating record failed (see console).');
@@ -250,37 +344,3 @@ loginBtn.onclick = async () => {
       domainAlert.classList.remove('hidden');
       domainAlert.innerHTML = `
         <div><strong>当前域名未加入 Firebase 白名单：</strong> <code>${host}</code></div>
-        <ol style="margin:6px 0 0 18px;">
-          <li>Firebase → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
-          <li>Add domain：<code>${host}</code>（推荐也加 <code>lubbock-hsa-bathroom-pass.vercel.app</code>、<code>localhost</code>）</li>
-          <li>保存后强制刷新（Ctrl+F5 / Cmd+Shift+R）再登录</li>
-        </ol>
-      `;
-      alert('This domain is not authorized for Google sign-in.');
-    } else {
-      alert('Google sign-in failed. See console.');
-    }
-  }
-};
-logoutBtn.onclick = () => auth.signOut();
-
-auth.onAuthStateChanged(u=>{
-  if (u){
-    whoEl.textContent = `Signed in as ${u.email || u.uid}`;
-    loginBtn.classList.add('hidden');
-    logoutBtn.classList.remove('hidden');
-    watchToday();
-  } else {
-    whoEl.textContent = 'Not signed in';
-    loginBtn.classList.remove('hidden');
-    logoutBtn.classList.add('hidden');
-    if (unsubscribe) unsubscribe();
-    todaysRows = [];
-    list.innerHTML = '';
-    tbody.innerHTML = '';
-    emptyMsg.style.display = 'block';
-  }
-});
-</script>
-</body>
-</html>
