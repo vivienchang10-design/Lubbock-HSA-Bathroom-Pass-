@@ -77,7 +77,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
 
 <script type="text/javascript">
-  // ==== Your Firebase config (already filled by you) ====
+  // ==== Firebase config (yours) ====
   // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   const firebaseConfig = {
     apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
@@ -111,10 +111,7 @@
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
       await auth.signInWithPopup(provider);
-    } catch (e) {
-      console.error(e);
-      alert('Google sign-in failed. See console.');
-    }
+    } catch (e) { console.error(e); alert('Google sign-in failed. See console.'); }
   };
   logoutBtn.onclick = () => auth.signOut();
 
@@ -134,8 +131,14 @@
     return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
   }
 
+  // ==== In-memory cache of today's rows (to avoid re-query for POST) ====
+  let todaysRows = [];
+
   // ==== Renderers ====
-  function renderCounts(counts){
+  function renderCounts(rows){
+    const counts = {};
+    rows.forEach(p => { if (!p.isEmergency) counts[p.studentName] = (counts[p.studentName]||0)+1; });
+
     list.innerHTML = '';
     const entries = Object.entries(counts);
     emptyMsg.style.display = entries.length ? 'none' : 'block';
@@ -165,7 +168,7 @@
     });
   }
 
-  // ==== Live query for today's records ====
+  // ==== Live query for today's records (no composite index needed) ====
   let unsubscribe = null;
   function watchToday(){
     if (unsubscribe) unsubscribe();
@@ -174,19 +177,12 @@
     unsubscribe = db.collection('passes')
       .where('createdAt', '>=', startUtc)
       .where('createdAt', '<', endUtc)
-      .orderBy('createdAt', 'desc')
+      .orderBy('createdAt', 'desc') // 单字段 createdAt，Firestore 自动索引，OK
       .onSnapshot(snap => {
         const rows = [];
-        const counts = {};
-        snap.forEach(doc => {
-          const p = doc.data();
-          rows.push(p);
-          if (!p.isEmergency){
-            const key = p.studentName || 'Unknown';
-            counts[key] = (counts[key] || 0) + 1;
-          }
-        });
-        renderCounts(counts);
+        snap.forEach(doc => rows.push(doc.data()));
+        todaysRows = rows;            // 缓存今天的全部记录
+        renderCounts(rows);
         renderTable(rows);
       }, err => {
         console.error('Snapshot error:', err);
@@ -194,8 +190,8 @@
       });
   }
 
-  // ==== Create pass (client limit check + instant timestamp) ====
-  const lastClick = new Map(); // local 30s guard
+  // ==== Create pass (client-side limit check using todaysRows; no composite index) ====
+  const lastClick = new Map(); // local 30s guard per student
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const u = auth.currentUser;
@@ -216,15 +212,11 @@
     }
 
     try {
-      // count today before write
-      const { startUtc, endUtc } = chicagoDayRange(new Date());
-      const todaySnap = await db.collection('passes')
-        .where('studentName','==', name)
-        .where('createdAt','>=', startUtc)
-        .where('createdAt','<', endUtc)
-        .get();
+      // 用已经监听到的 todaysRows 在前端过滤该学生今天的非紧急次数
+      const nonEmergencyCount = todaysRows.reduce((acc, p) => {
+        return acc + ((p.studentName === name && !p.isEmergency) ? 1 : 0);
+      }, 0);
 
-      const nonEmergencyCount = todaySnap.docs.reduce((acc, d)=> acc + (!d.data().isEmergency ? 1:0), 0);
       if (!emergency && nonEmergencyCount >= 3) {
         msg.textContent = 'Reached daily limit (3).';
         input.value = '';
@@ -237,7 +229,7 @@
         teacherUid: u.uid,
         teacherEmail: u.email || '',
         isEmergency: emergency,
-        // PATCH: make the record visible immediately
+        // 立即可见（不等 serverTimestamp 回填）
         createdAt: firebase.firestore.Timestamp.now(),
       });
 
@@ -245,6 +237,7 @@
       msg.textContent = 'Recorded ✅';
       input.value = '';
       emg.checked = false;
+      // 不需要手动刷新，onSnapshot 会自动更新 todaysRows/列表
     } catch (err) {
       console.error(err);
       alert('Creating record failed (see console).');
@@ -263,6 +256,7 @@
       loginBtn.classList.remove('hidden');
       logoutBtn.classList.add('hidden');
       if (unsubscribe) unsubscribe();
+      todaysRows = [];
       list.innerHTML = '';
       tbody.innerHTML = '';
       emptyMsg.style.display = 'block';
