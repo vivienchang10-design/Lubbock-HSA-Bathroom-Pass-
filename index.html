@@ -5,196 +5,270 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Bathroom Pass – HSA Lubbock</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-    header, main { max-width: 900px; margin: auto; padding: 16px; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
-    input[type=text] { width: 100%; padding: 8px; margin: 8px 0; }
-    button { padding: 8px 12px; margin: 4px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
-    th { background-color: #f9f9f9; }
-    .danger { color: red; font-weight: bold; }
+    :root { --pad: 14px; --radius: 14px; --border: #ddd; --muted:#666; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; color:#111; }
+    header, main { max-width: 900px; margin: 0 auto; padding: var(--pad); }
+    .card { border:1px solid var(--border); border-radius: var(--radius); padding: var(--pad); box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+    .row { display:flex; gap:12px; align-items:center; }
+    .grow { flex:1; }
+    input[type=text] { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); }
+    button { padding:10px 14px; border:1px solid var(--border); border-radius:12px; background:#fff; cursor:pointer; }
+    button.primary { border-color:#222; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media (min-width: 720px){ .grid{ grid-template-columns: 1fr 1fr; } }
+    ul { list-style:none; padding:0; margin:0; }
+    li.item { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius: 12px; padding:10px 12px; }
+    .muted{ color:var(--muted); font-size: 12px;}
+    .danger{ color:#b00020; font-weight:600; }
+    .ok{ font-weight:600; }
+    .hidden{ display:none; }
+    .badge{ font-size:12px; border:1px solid var(--border); border-radius:999px; padding:3px 8px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+    th { font-size:12px; color:#444; }
   </style>
 </head>
 <body>
-<header>
-  <h1>Bathroom Pass</h1>
-  <p id="who">Not signed in</p>
-  <button id="loginBtn">Sign in with Google</button>
-  <button id="logoutBtn" style="display:none;">Logout</button>
+<header class="row">
+  <div class="grow">
+    <h1 style="margin:0 0 4px;">Bathroom Pass</h1>
+    <div id="who" class="muted">Not signed in</div>
+  </div>
+  <div class="row">
+    <button id="loginBtn" class="primary">Sign in with Google</button>
+    <button id="logoutBtn" class="hidden">Logout</button>
+  </div>
 </header>
 
 <main>
-  <div class="card">
-    <h3>Quick Record</h3>
-    <form id="recordForm">
-      <input id="studentInput" type="text" placeholder="Student Name" required />
-      <label><input type="checkbox" id="emg" /> Emergency/Exempt</label>
-      <button type="submit">Record</button>
+  <!-- Quick Record -->
+  <section class="card">
+    <h2 style="margin:0 0 10px;">Quick Record</h2>
+    <form id="recordForm" class="row" autocomplete="off">
+      <input id="studentInput" class="grow" type="text" placeholder="Type student name (e.g., Student A)" required />
+      <label class="row" style="gap:6px; font-size:14px;"><input id="emg" type="checkbox" /> Emergency/Exempt</label>
+      <button type="submit" class="primary">Record</button>
     </form>
-  </div>
+    <div class="muted" style="margin-top:6px;">• Max 3 per day (America/Chicago). Emergency entries don’t count toward the limit.</div>
+    <div id="msg" class="muted" style="margin-top:6px;"></div>
+  </section>
 
-  <div class="card">
-    <h3>Today’s Counts (Max 3)</h3>
-    <ul id="list"></ul>
-  </div>
+  <!-- Today Counts -->
+  <section class="grid" style="margin-top:16px;">
+    <div class="card">
+      <h3 style="margin:0 0 8px;">Today’s Counts (Max 3)</h3>
+      <div id="emptyMsg" class="muted">No records yet.</div>
+      <ul id="list"></ul>
+    </div>
 
-  <div class="card">
-    <h3>Latest Records</h3>
-    <table>
-      <thead>
-        <tr><th>Time</th><th>Student</th><th>Teacher</th><th>Emergency</th></tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px;">Latest Records (today)</h3>
+      <table id="table">
+        <thead><tr><th>Time (CT)</th><th>Student</th><th>Teacher</th><th>Emergency</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
 </main>
 
-<!-- Firebase SDKs -->
+<!-- Firebase SDKs (compat for simplicity) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
 
-<script>
-// 你的 firebaseConfig
-const firebaseConfig = {
-  apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
-  authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
-  projectId: "lubbock-hsa-bathroom-pass",
-  storageBucket: "lubbock-hsa-bathroom-pass.firebasestorage.app",
-  messagingSenderId: "20266028833",
-  appId: "1:20266028833:web:5219b6cfa07da654807860",
-  measurementId: "G-ENKQZMW0H8"
-};
+<script type="text/javascript">
+  // ==== Your Firebase config (already filled by you) ====
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
+    authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
+    projectId: "lubbock-hsa-bathroom-pass",
+    storageBucket: "lubbock-hsa-bathroom-pass.firebasestorage.app",
+    messagingSenderId: "20266028833",
+    appId: "1:20266028833:web:5219b6cfa07da654807860",
+    measurementId: "G-ENKQZMW0H8"
+  };
 
-// 初始化 Firebase
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+  // ==== Init ====
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
 
-// 元素
-const whoEl = document.getElementById('who');
-const loginBtn = document.getElementById('loginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
-const form = document.getElementById('recordForm');
-const input = document.getElementById('studentInput');
-const emg = document.getElementById('emg');
-const list = document.getElementById('list');
-const tbody = document.getElementById('tbody');
+  // ==== Elements ====
+  const whoEl = document.getElementById('who');
+  const loginBtn = document.getElementById('loginBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const form = document.getElementById('recordForm');
+  const input = document.getElementById('studentInput');
+  const emg = document.getElementById('emg');
+  const list = document.getElementById('list');
+  const tbody = document.getElementById('tbody');
+  const msg = document.getElementById('msg');
+  const emptyMsg = document.getElementById('emptyMsg');
 
-// 登录 / 登出
-loginBtn.onclick = async () => {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  await auth.signInWithPopup(provider);
-};
-logoutBtn.onclick = () => auth.signOut();
+  // ==== Auth UI ====
+  loginBtn.onclick = async () => {
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+    } catch (e) {
+      console.error(e);
+      alert('Google sign-in failed. See console.');
+    }
+  };
+  logoutBtn.onclick = () => auth.signOut();
 
-// 时区计算（美中时区）
-function chicagoDayRange(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month:'2-digit', day:'2-digit'}).formatToParts(now);
-  const y = parts.find(p=>p.type==='year').value;
-  const m = parts.find(p=>p.type==='month').value;
-  const d = parts.find(p=>p.type==='day').value;
-  const localMidnight = new Date(new Date(`${y}-${m}-${d}T00:00:00`).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-  const startUtc = new Date(Date.UTC(localMidnight.getFullYear(), localMidnight.getMonth(), localMidnight.getDate(), 0,0,0));
-  const endUtc = new Date(startUtc.getTime() + 24*60*60*1000);
-  return { startUtc, endUtc };
-}
-
-// 渲染
-function renderCounts(counts) {
-  list.innerHTML = '';
-  Object.entries(counts).forEach(([name, c]) => {
-    const li = document.createElement('li');
-    li.textContent = `${name} - ${c}/3`;
-    if (c >= 3) li.classList.add('danger');
-    list.appendChild(li);
-  });
-}
-function renderTable(rows) {
-  tbody.innerHTML = '';
-  rows.forEach(p => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.time}</td><td>${p.student}</td><td>${p.teacher}</td><td>${p.emergency?'Yes':'No'}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-// 监听数据
-let unsubscribe = null;
-function watchToday() {
-  if (unsubscribe) unsubscribe();
-  const { startUtc, endUtc } = chicagoDayRange(new Date());
-  unsubscribe = db.collection('passes')
-    .where('createdAt', '>=', startUtc)
-    .where('createdAt', '<', endUtc)
-    .orderBy('createdAt', 'desc')
-    .onSnapshot(snap => {
-      const counts = {};
-      const rows = [];
-      snap.forEach(doc => {
-        const p = doc.data();
-        const name = p.studentName;
-        if (!p.isEmergency) counts[name] = (counts[name] || 0) + 1;
-        rows.push({
-          time: p.createdAt ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit'}).format(p.createdAt.toDate()) : '',
-          student: name,
-          teacher: p.teacherEmail,
-          emergency: p.isEmergency
-        });
-      });
-      renderCounts(counts);
-      renderTable(rows);
-    });
-}
-
-// 提交记录
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const u = auth.currentUser;
-  if (!u) return alert('Please sign in.');
-  const name = input.value.trim();
-  if (!name) return;
-  const emergency = emg.checked;
-
-  const { startUtc, endUtc } = chicagoDayRange(new Date());
-  const todaySnap = await db.collection('passes')
-    .where('studentName','==', name)
-    .where('createdAt','>=', startUtc)
-    .where('createdAt','<', endUtc)
-    .get();
-  const nonEmergencyCount = todaySnap.docs.reduce((acc, d)=> acc + (!d.data().isEmergency ? 1:0), 0);
-  if (!emergency && nonEmergencyCount >= 3) {
-    input.value = '';
-    emg.checked = false;
-    return alert('Reached daily limit (3).');
+  // ==== Time helpers (America/Chicago day range) ====
+  function chicagoDayRange(now = new Date()){
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month:'2-digit', day:'2-digit'}).formatToParts(now);
+    const y = parts.find(p=>p.type==='year').value;
+    const m = parts.find(p=>p.type==='month').value;
+    const d = parts.find(p=>p.type==='day').value;
+    const localMidnight = new Date(new Date(`${y}-${m}-${d}T00:00:00`).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    const startUtc = new Date(Date.UTC(localMidnight.getFullYear(), localMidnight.getMonth(), localMidnight.getDate(), 0,0,0));
+    const endUtc = new Date(startUtc.getTime() + 24*60*60*1000);
+    return { startUtc, endUtc };
   }
-  await db.collection('passes').add({
-    studentName: name,
-    teacherUid: u.uid,
-    teacherEmail: u.email || '',
-    isEmergency: emergency,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-  });
-  input.value = '';
-  emg.checked = false;
-});
+  function formatChicago(ts){
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
+  }
 
-// 登录状态监听
-auth.onAuthStateChanged(u => {
-  if (u) {
-    whoEl.textContent = `Signed in as ${u.email}`;
-    loginBtn.style.display = 'none';
-    logoutBtn.style.display = 'inline-block';
-    watchToday();
-  } else {
-    whoEl.textContent = 'Not signed in';
-    loginBtn.style.display = 'inline-block';
-    logoutBtn.style.display = 'none';
+  // ==== Renderers ====
+  function renderCounts(counts){
     list.innerHTML = '';
-    tbody.innerHTML = '';
+    const entries = Object.entries(counts);
+    emptyMsg.style.display = entries.length ? 'none' : 'block';
+    entries.forEach(([name, c])=>{
+      const li = document.createElement('li');
+      li.className = 'item';
+      const span = document.createElement('span');
+      span.textContent = name;
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + (c>=3? 'danger':'ok');
+      badge.textContent = `${c}/3`;
+      li.appendChild(span);
+      li.appendChild(badge);
+      list.appendChild(li);
+    });
   }
-});
+
+  function renderTable(rows){
+    tbody.innerHTML = '';
+    rows.forEach(p=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${p.createdAt ? formatChicago(p.createdAt) : ''}</td>
+                      <td>${p.studentName || ''}</td>
+                      <td>${p.teacherEmail || ''}</td>
+                      <td>${p.isEmergency ? 'Yes':'No'}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ==== Live query for today's records ====
+  let unsubscribe = null;
+  function watchToday(){
+    if (unsubscribe) unsubscribe();
+    const { startUtc, endUtc } = chicagoDayRange(new Date());
+
+    unsubscribe = db.collection('passes')
+      .where('createdAt', '>=', startUtc)
+      .where('createdAt', '<', endUtc)
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(snap => {
+        const rows = [];
+        const counts = {};
+        snap.forEach(doc => {
+          const p = doc.data();
+          rows.push(p);
+          if (!p.isEmergency){
+            const key = p.studentName || 'Unknown';
+            counts[key] = (counts[key] || 0) + 1;
+          }
+        });
+        renderCounts(counts);
+        renderTable(rows);
+      }, err => {
+        console.error('Snapshot error:', err);
+        alert('Reading data failed (see console). Check Firestore rules/domains/login.');
+      });
+  }
+
+  // ==== Create pass (client limit check + instant timestamp) ====
+  const lastClick = new Map(); // local 30s guard
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const u = auth.currentUser;
+    if (!u) { alert('Please sign in.'); return; }
+
+    const name = input.value.trim();
+    if (!name) return;
+    const emergency = !!emg.checked;
+
+    // 30s guard (local)
+    const nowMs = Date.now();
+    const last = lastClick.get(name);
+    if (last && (nowMs - last) < 30_000) {
+      msg.textContent = 'Duplicate click ignored (within 30s).';
+      input.value = '';
+      emg.checked = false;
+      return;
+    }
+
+    try {
+      // count today before write
+      const { startUtc, endUtc } = chicagoDayRange(new Date());
+      const todaySnap = await db.collection('passes')
+        .where('studentName','==', name)
+        .where('createdAt','>=', startUtc)
+        .where('createdAt','<', endUtc)
+        .get();
+
+      const nonEmergencyCount = todaySnap.docs.reduce((acc, d)=> acc + (!d.data().isEmergency ? 1:0), 0);
+      if (!emergency && nonEmergencyCount >= 3) {
+        msg.textContent = 'Reached daily limit (3).';
+        input.value = '';
+        emg.checked = false;
+        return;
+      }
+
+      await db.collection('passes').add({
+        studentName: name,
+        teacherUid: u.uid,
+        teacherEmail: u.email || '',
+        isEmergency: emergency,
+        // PATCH: make the record visible immediately
+        createdAt: firebase.firestore.Timestamp.now(),
+      });
+
+      lastClick.set(name, Date.now());
+      msg.textContent = 'Recorded ✅';
+      input.value = '';
+      emg.checked = false;
+    } catch (err) {
+      console.error(err);
+      alert('Creating record failed (see console).');
+    }
+  });
+
+  // ==== Auth state ====
+  auth.onAuthStateChanged(u=>{
+    if (u){
+      whoEl.textContent = `Signed in as ${u.email || u.uid}`;
+      loginBtn.classList.add('hidden');
+      logoutBtn.classList.remove('hidden');
+      watchToday();
+    } else {
+      whoEl.textContent = 'Not signed in';
+      loginBtn.classList.remove('hidden');
+      logoutBtn.classList.add('hidden');
+      if (unsubscribe) unsubscribe();
+      list.innerHTML = '';
+      tbody.innerHTML = '';
+      emptyMsg.style.display = 'block';
+    }
+  });
 </script>
+
 </body>
 </html>
