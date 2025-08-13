@@ -1,175 +1,200 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>HSA Lubbock · Bathroom Pass</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bathroom Pass – HSA Lubbock</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    header, main { max-width: 900px; margin: auto; padding: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+    input[type=text] { width: 100%; padding: 8px; margin: 8px 0; }
+    button { padding: 8px 12px; margin: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+    th { background-color: #f9f9f9; }
+    .danger { color: red; font-weight: bold; }
+  </style>
 </head>
 <body>
-  <h1>HSA Lubbock · Bathroom Pass</h1>
+<header>
+  <h1>Bathroom Pass</h1>
+  <p id="who">Not signed in</p>
+  <button id="loginBtn">Sign in with Google</button>
+  <button id="logoutBtn" style="display:none;">Logout</button>
+</header>
 
-  <div id="loginDiv">
-    <input id="email" type="email" placeholder="Email">
-    <input id="password" type="password" placeholder="Password">
-    <button onclick="login()">Login</button>
+<main>
+  <div class="card">
+    <h3>Quick Record</h3>
+    <form id="recordForm">
+      <input id="studentInput" type="text" placeholder="Student Name" required />
+      <label><input type="checkbox" id="emg" /> Emergency/Exempt</label>
+      <button type="submit">Record</button>
+    </form>
   </div>
 
-  <div id="appDiv" style="display:none;">
-    <p id="userEmail"></p>
-    <button onclick="logout()">Logout</button>
-    <h3>Student</h3>
-    <select id="studentSelect">
-      <option>Student A</option>
-      <option>Student B</option>
-      <option>Student C</option>
-      <option>Student D</option>
-      <option>Student E</option>
-      <option>Student F</option>
-    </select>
-    <button onclick="logOne()">Record Bathroom Pass</button>
-    <p>Limit is 3 per day (per student).</p>
+  <div class="card">
+    <h3>Today’s Counts (Max 3)</h3>
+    <ul id="list"></ul>
+  </div>
 
-    <h3>Today</h3>
-    <table border="1">
+  <div class="card">
+    <h3>Latest Records</h3>
+    <table>
       <thead>
-        <tr>
-          <th>Student</th>
-          <th>Count</th>
-          <th>Status</th>
-        </tr>
+        <tr><th>Time</th><th>Student</th><th>Teacher</th><th>Emergency</th></tr>
       </thead>
-      <tbody id="todayTable"></tbody>
-    </table>
-
-    <h3>Last 7 days</h3>
-    <table border="1">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Student</th>
-          <th>Teacher</th>
-          <th>Over 3?</th>
-        </tr>
-      </thead>
-      <tbody id="historyTable"></tbody>
+      <tbody id="tbody"></tbody>
     </table>
   </div>
+</main>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
 
 <script>
-  // Firebase config
-  const firebaseConfig = {
-    apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
-    authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
-    projectId: "lubbock-hsa-bathroom-pass",
-    storageBucket: "lubbock-hsa-bathroom-pass.appspot.com",
-    messagingSenderId: "20266028833",
-    appId: "1:20266028833:web:5219b6cfa07da654807860",
-    measurementId: "G-ENKQZMW0H8"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
+// 你的 firebaseConfig
+const firebaseConfig = {
+  apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
+  authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
+  projectId: "lubbock-hsa-bathroom-pass",
+  storageBucket: "lubbock-hsa-bathroom-pass.firebasestorage.app",
+  messagingSenderId: "20266028833",
+  appId: "1:20266028833:web:5219b6cfa07da654807860",
+  measurementId: "G-ENKQZMW0H8"
+};
 
-  function login() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    auth.signInWithEmailAndPassword(email, password)
-      .then(() => {
-        document.getElementById('loginDiv').style.display = 'none';
-        document.getElementById('appDiv').style.display = 'block';
-        document.getElementById('userEmail').innerText = auth.currentUser.email;
-        loadData();
-      })
-      .catch(err => alert(err.message));
-  }
+// 初始化 Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-  function logout() {
-    auth.signOut();
-    document.getElementById('loginDiv').style.display = 'block';
-    document.getElementById('appDiv').style.display = 'none';
-  }
+// 元素
+const whoEl = document.getElementById('who');
+const loginBtn = document.getElementById('loginBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const form = document.getElementById('recordForm');
+const input = document.getElementById('studentInput');
+const emg = document.getElementById('emg');
+const list = document.getElementById('list');
+const tbody = document.getElementById('tbody');
 
-  // 修复后的 logOne 函数
-  function logOne() {
-    const student = document.getElementById('studentSelect').value;
-    const teacher = auth.currentUser.email;
-    const todayDate = new Date().toISOString().split('T')[0];
+// 登录 / 登出
+loginBtn.onclick = async () => {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  await auth.signInWithPopup(provider);
+};
+logoutBtn.onclick = () => auth.signOut();
 
-    const todayStart = new Date(todayDate + "T00:00:00");
-    const todayEnd = new Date(todayDate + "T23:59:59");
+// 时区计算（美中时区）
+function chicagoDayRange(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month:'2-digit', day:'2-digit'}).formatToParts(now);
+  const y = parts.find(p=>p.type==='year').value;
+  const m = parts.find(p=>p.type==='month').value;
+  const d = parts.find(p=>p.type==='day').value;
+  const localMidnight = new Date(new Date(`${y}-${m}-${d}T00:00:00`).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  const startUtc = new Date(Date.UTC(localMidnight.getFullYear(), localMidnight.getMonth(), localMidnight.getDate(), 0,0,0));
+  const endUtc = new Date(startUtc.getTime() + 24*60*60*1000);
+  return { startUtc, endUtc };
+}
 
-    db.collection("passes")
-      .where("student", "==", student)
-      .where("time", ">=", todayStart.toISOString())
-      .where("time", "<=", todayEnd.toISOString())
-      .get()
-      .then(snapshot => {
-        if (snapshot.size >= 3) {
-          alert(student + " 已经达到今日 3 次限制");
-          return;
-        }
-        db.collection("passes").add({
-          student: student,
-          teacher: teacher,
-          time: new Date().toISOString()
-        }).then(() => {
-          alert("记录成功！");
-          loadData();
+// 渲染
+function renderCounts(counts) {
+  list.innerHTML = '';
+  Object.entries(counts).forEach(([name, c]) => {
+    const li = document.createElement('li');
+    li.textContent = `${name} - ${c}/3`;
+    if (c >= 3) li.classList.add('danger');
+    list.appendChild(li);
+  });
+}
+function renderTable(rows) {
+  tbody.innerHTML = '';
+  rows.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.time}</td><td>${p.student}</td><td>${p.teacher}</td><td>${p.emergency?'Yes':'No'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// 监听数据
+let unsubscribe = null;
+function watchToday() {
+  if (unsubscribe) unsubscribe();
+  const { startUtc, endUtc } = chicagoDayRange(new Date());
+  unsubscribe = db.collection('passes')
+    .where('createdAt', '>=', startUtc)
+    .where('createdAt', '<', endUtc)
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      const counts = {};
+      const rows = [];
+      snap.forEach(doc => {
+        const p = doc.data();
+        const name = p.studentName;
+        if (!p.isEmergency) counts[name] = (counts[name] || 0) + 1;
+        rows.push({
+          time: p.createdAt ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit'}).format(p.createdAt.toDate()) : '',
+          student: name,
+          teacher: p.teacherEmail,
+          emergency: p.isEmergency
         });
       });
-  }
-
-  function loadData() {
-    const todayDate = new Date().toISOString().split('T')[0];
-    const todayStart = new Date(todayDate + "T00:00:00");
-    const todayEnd = new Date(todayDate + "T23:59:59");
-
-    const students = ["Student A","Student B","Student C","Student D","Student E","Student F"];
-    const todayTable = document.getElementById("todayTable");
-    todayTable.innerHTML = "";
-
-    students.forEach(stu => {
-      db.collection("passes")
-        .where("student", "==", stu)
-        .where("time", ">=", todayStart.toISOString())
-        .where("time", "<=", todayEnd.toISOString())
-        .get()
-        .then(snapshot => {
-          const count = snapshot.size;
-          const row = `<tr>
-            <td>${stu}</td>
-            <td>${count}/3</td>
-            <td>${count >= 3 ? "LIMIT" : "OK"}</td>
-          </tr>`;
-          todayTable.innerHTML += row;
-        });
+      renderCounts(counts);
+      renderTable(rows);
     });
+}
 
-    const historyTable = document.getElementById("historyTable");
-    historyTable.innerHTML = "";
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+// 提交记录
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const u = auth.currentUser;
+  if (!u) return alert('Please sign in.');
+  const name = input.value.trim();
+  if (!name) return;
+  const emergency = emg.checked;
 
-    db.collection("passes")
-      .where("time", ">=", sevenDaysAgo.toISOString())
-      .orderBy("time", "desc")
-      .get()
-      .then(snapshot => {
-        snapshot.forEach(doc => {
-          const d = doc.data();
-          const over3 = false; // 可以按需计算
-          const row = `<tr>
-            <td>${d.time}</td>
-            <td>${d.student}</td>
-            <td>${d.teacher}</td>
-            <td>${over3}</td>
-          </tr>`;
-          historyTable.innerHTML += row;
-        });
-      });
+  const { startUtc, endUtc } = chicagoDayRange(new Date());
+  const todaySnap = await db.collection('passes')
+    .where('studentName','==', name)
+    .where('createdAt','>=', startUtc)
+    .where('createdAt','<', endUtc)
+    .get();
+  const nonEmergencyCount = todaySnap.docs.reduce((acc, d)=> acc + (!d.data().isEmergency ? 1:0), 0);
+  if (!emergency && nonEmergencyCount >= 3) {
+    input.value = '';
+    emg.checked = false;
+    return alert('Reached daily limit (3).');
   }
+  await db.collection('passes').add({
+    studentName: name,
+    teacherUid: u.uid,
+    teacherEmail: u.email || '',
+    isEmergency: emergency,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  input.value = '';
+  emg.checked = false;
+});
+
+// 登录状态监听
+auth.onAuthStateChanged(u => {
+  if (u) {
+    whoEl.textContent = `Signed in as ${u.email}`;
+    loginBtn.style.display = 'none';
+    logoutBtn.style.display = 'inline-block';
+    watchToday();
+  } else {
+    whoEl.textContent = 'Not signed in';
+    loginBtn.style.display = 'inline-block';
+    logoutBtn.style.display = 'none';
+    list.innerHTML = '';
+    tbody.innerHTML = '';
+  }
+});
 </script>
 </body>
 </html>
