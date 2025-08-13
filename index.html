@@ -1,356 +1,122 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>HSA Lubbock · Bathroom Pass</title>
+  <meta charset="UTF-8">
+  <title>HSA Bathroom Pass</title>
+  <script type="module">
+    // =================== Firebase 初始化 ===================
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { 
+      getFirestore, doc, getDoc, collection, addDoc, serverTimestamp, 
+      query, where, orderBy, limit, getDocs 
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { 
+      getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut 
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-  <!-- 小图标，避免 /favicon 404 -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23005BBB'/%3E%3Cpath d='M20 18h24v6H20zM24 28h16v18H24z' fill='%23FFD500'/%3E%3C/svg%3E" />
+    const firebaseConfig = {
+      apiKey: "你的APIKEY",
+      authDomain: "你的PROJECTID.firebaseapp.com",
+      projectId: "你的PROJECTID",
+      storageBucket: "你的PROJECTID.appspot.com",
+      messagingSenderId: "xxxx",
+      appId: "xxxx"
+    };
 
-  <style>
-    :root { --pad:14px; --radius:16px; --border:#ddd; --muted:#666; }
-    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; margin:0; color:#111; background:#fff; }
-    header, main { max-width: 900px; margin: 0 auto; padding: var(--pad); }
-    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    .grow { flex:1; }
-    .card { border:1px solid var(--border); border-radius:var(--radius); padding:var(--pad); box-shadow:0 1px 4px rgba(0,0,0,.04); background:#fff; }
-    input[type=text], input[type=number] { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--border); font-size:16px; }
-    .readonly { background:#fafafa; }
-    button { padding:12px 16px; border:1px solid var(--border); border-radius:12px; background:#fff; cursor:pointer; font-size:16px; }
-    button.primary { border-color:#222; }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    .muted { color:var(--muted); font-size:12px; }
-    .grid { display:grid; grid-template-columns:1fr; gap:16px; }
-    @media (min-width:780px){ .grid{ grid-template-columns:1fr 1fr; } }
-    ul { list-style:none; padding:0; margin:0; }
-    li.item { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
-    .badge { font-size:12px; border:1px solid var(--border); border-radius:999px; padding:3px 8px; }
-    .danger { color:#b00020; font-weight:600; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
-    th { font-size:12px; color:#444; }
-    .hidden { display:none; }
-    .alert { border:1px dashed #f3b; background:#fff7fb; padding:10px 12px; border-radius:12px; margin-top:8px; }
-  </style>
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth();
 
-  <script>
-    // 强制使用正式域名，避免 OAuth 未授权域名
-    (function(){
-      var host = location.hostname;
-      if (host !== "lubbock-hsa-bathroom-pass.vercel.app" && host !== "localhost") {
-        location.href = "https://lubbock-hsa-bathroom-pass.vercel.app";
+    // =================== 登录相关 ===================
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const userInfo = document.getElementById("userInfo");
+
+    loginBtn.addEventListener("click", async () => {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+    });
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        userInfo.innerText = user.email;
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "inline-block";
+        document.getElementById("main").style.display = "block";
+      } else {
+        userInfo.innerText = "";
+        loginBtn.style.display = "inline-block";
+        logoutBtn.style.display = "none";
+        document.getElementById("main").style.display = "none";
       }
-    })();
+    });
+
+    // =================== 自动获取学生信息 ===================
+    document.getElementById("studentNumber").addEventListener("change", async () => {
+      const number = document.getElementById("studentNumber").value.trim();
+      if (!number) return;
+
+      try {
+        const studentRef = doc(db, "students", number); // Document ID = 学生编号
+        const studentSnap = await getDoc(studentRef);
+
+        if (studentSnap.exists()) {
+          const studentData = studentSnap.data();
+          document.getElementById("studentName").value = `${studentData.name} - ${studentData.grade}`;
+        } else {
+          document.getElementById("studentName").value = "";
+          alert("未找到该学生编号，请检查 students 集合。");
+        }
+      } catch (error) {
+        console.error("Error fetching student:", error);
+        alert("获取学生信息失败，请稍后再试。");
+      }
+    });
+
+    // =================== 记录上厕所 ===================
+    document.getElementById("recordBtn").addEventListener("click", async () => {
+      const number = document.getElementById("studentNumber").value.trim();
+      if (!number) return alert("请输入学生编号");
+
+      const nameField = document.getElementById("studentName").value.trim();
+      if (!nameField) return alert("请先输入有效的学生编号");
+
+      const [name, grade] = nameField.split(" - ");
+
+      try {
+        await addDoc(collection(db, "passes"), {
+          number,
+          name,
+          grade,
+          teacher: auth.currentUser.email,
+          timestamp: serverTimestamp()
+        });
+        alert("Recorded ✅");
+      } catch (error) {
+        console.error(error);
+        alert("记录失败");
+      }
+    });
   </script>
 </head>
 <body>
-<header class="row">
-  <div class="grow">
-    <h1 style="margin:0 0 4px;">Bathroom Pass</h1>
-    <div id="who" class="muted">Not signed in</div>
+  <button id="loginBtn">Login with Google</button>
+  <button id="logoutBtn" style="display:none;">Logout</button>
+  <span id="userInfo"></span>
+
+  <div id="main" style="display:none;">
+    <h2>Bathroom Pass</h2>
+    <label>Student # (1–600):</label>
+    <input type="number" id="studentNumber" min="1" max="600">
+    <br>
+    <label>Name (auto):</label>
+    <input type="text" id="studentName" readonly>
+    <br><br>
+    <button id="recordBtn">Record Bathroom Pass</button>
   </div>
-  <div class="row">
-    <button id="loginBtn" class="primary">Sign in with Google</button>
-    <button id="logoutBtn" class="hidden">Logout</button>
-  </div>
-</header>
-
-<main>
-  <section class="card">
-    <h2 style="margin:0 0 10px;">Quick Record</h2>
-    <form id="recordForm" autocomplete="off">
-      <div class="row">
-        <div style="min-width:140px">
-          <label class="muted">Student # (1–600)</label>
-          <input id="studentNumber" type="number" min="1" max="600" placeholder="e.g. 123" required />
-        </div>
-        <div class="grow">
-          <label class="muted">Name (auto)</label>
-          <input id="studentName" class="readonly" type="text" placeholder="—" readonly />
-        </div>
-        <div style="min-width:160px">
-          <label class="muted">Grade (auto)</label>
-          <input id="studentGrade" class="readonly" type="text" placeholder="—" readonly />
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <label class="row" style="gap:6px; font-size:14px;">
-          <input id="emg" type="checkbox" /> Emergency/Exempt
-        </label>
-        <button id="recordBtn" type="submit" class="primary" disabled>Record</button>
-      </div>
-    </form>
-    <div id="msg" class="muted" style="margin-top:6px;">• 输入编号后会自动显示姓名与年级；未找到编号或未登录将无法提交。</div>
-    <div id="domainAlert" class="alert hidden"></div>
-  </section>
-
-  <section class="grid" style="margin-top:16px;">
-    <div class="card">
-      <h3 style="margin:0 0 8px;">Today’s Counts (Max 3)</h3>
-      <div id="emptyMsg" class="muted">No records yet.</div>
-      <ul id="list"></ul>
-    </div>
-
-    <div class="card">
-      <h3 style="margin:0 0 8px;">Latest Records (today)</h3>
-      <table>
-        <thead><tr><th>Time (CT)</th><th>Student</th><th>Grade</th><th>Teacher</th><th>Emergency</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  </section>
-</main>
-
-<!-- compat 版 SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
-
-<script>
-// ===== Firebase config（你的）=====
-const firebaseConfig = {
-  apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
-  authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
-  projectId: "lubbock-hsa-bathroom-pass",
-  storageBucket: "lubbock-hsa-bathroom-pass.firebasestorage.app",
-  messagingSenderId: "20266028833",
-  appId: "1:20266028833:web:5219b6cfa07da654807860",
-  measurementId: "G-ENKQZMW0H8"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-
-// ===== DOM =====
-const whoEl = document.getElementById('who');
-const loginBtn = document.getElementById('loginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
-const form = document.getElementById('recordForm');
-const numInput = document.getElementById('studentNumber');
-const nameOutput = document.getElementById('studentName');
-const gradeOutput = document.getElementById('studentGrade');
-const emg = document.getElementById('emg');
-const recordBtn = document.getElementById('recordBtn');
-const list = document.getElementById('list');
-const tbody = document.getElementById('tbody');
-const msg = document.getElementById('msg');
-const emptyMsg = document.getElementById('emptyMsg');
-const domainAlert = document.getElementById('domainAlert');
-
-// ===== Helpers: Chicago 时区 dayKey / 时间格式 =====
-function chicagoDayParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(date);
-  const y = parts.find(p=>p.type==='year').value;
-  const m = parts.find(p=>p.type==='month').value;
-  const d = parts.find(p=>p.type==='day').value;
-  return { y, m, d };
-}
-function chicagoDayKey(date = new Date()) {
-  const {y,m,d} = chicagoDayParts(date);
-  return `${y}-${m}-${d}`;
-}
-function formatChicago(ts){
-  const date = ts?.toDate ? ts.toDate() : new Date(ts);
-  return new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
-}
-
-// ===== 学生查找（优先 Document ID，其次 number 字段）=====
-async function getStudentByNumber(n){
-  // 1) 先按 Document ID 直接取（你现在的做法）
-  const id = String(n);
-  const byId = await db.collection('students').doc(id).get();
-  if (byId.exists) {
-    return { id: byId.id, ...byId.data() };
-  }
-  // 2) 退回按 number 字段匹配（兼容另一种建库方式）
-  const q = await db.collection('students').where('number','==', n).limit(1).get();
-  if (!q.empty){
-    const d=q.docs[0];
-    return { id: d.id, ...d.data() };
-  }
-  return null;
-}
-
-// ===== 输入编号后，自动填充姓名/年级，并校验可提交 =====
-numInput.addEventListener('input', async ()=>{
-  const n = parseInt(numInput.value, 10);
-  nameOutput.value = ''; gradeOutput.value = '';
-  recordBtn.disabled = true;
-
-  if (!Number.isInteger(n) || n < 1 || n > 600) {
-    msg.textContent = '请输入 1–600 的学生编号。';
-    return;
-  }
-  const s = await getStudentByNumber(n);
-  if (!s) {
-    msg.textContent = '未找到该学生编号，请检查 students 集合。';
-    return;
-  }
-  nameOutput.value = s.name || '';
-  gradeOutput.value = s.grade || '';
-  msg.textContent = '';
-
-  // 必须已经登录才允许提交
-  if (auth.currentUser) recordBtn.disabled = false;
-});
-
-// ===== 状态 =====
-let todaysRows = [];
-let unsubscribe = null;
-
-// ===== 渲染 =====
-function renderCounts(rows){
-  // 按编号聚合（非紧急）
-  const counts = new Map(); // num -> {c, name, grade}
-  rows.forEach(p=>{
-    if (p.isEmergency) return;
-    const num = p.studentNumber;
-    const cur = counts.get(num) || { c:0, name: p.studentName || ('#'+num), grade: p.grade || '' };
-    cur.c += 1;
-    // 最新的 name/grade 覆盖一下
-    if (p.studentName) cur.name = p.studentName;
-    if (p.grade) cur.grade = p.grade;
-    counts.set(num, cur);
-  });
-
-  list.innerHTML = '';
-  const items = [...counts.entries()].sort((a,b)=> b[1].c - a[1].c);
-  emptyMsg.style.display = items.length ? 'none' : 'block';
-  items.forEach(([num, info])=>{
-    const li = document.createElement('li');
-    li.className = 'item';
-    li.innerHTML = `<span>#${num} — ${info.name}${info.grade?(' — G'+info.grade):''}</span>
-                    <span class="badge ${info.c>=3?'danger':''}">${info.c}/3</span>`;
-    list.appendChild(li);
-  });
-}
-function renderTable(rows){
-  const sorted = [...rows].sort((a,b)=>{
-    const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-    const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-    return bt - at;
-  });
-  tbody.innerHTML = '';
-  sorted.forEach(p=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.createdAt ? formatChicago(p.createdAt) : ''}</td>
-                    <td>${p.studentName || ('#'+p.studentNumber)}</td>
-                    <td>${p.grade || ''}</td>
-                    <td>${p.teacherEmail || ''}</td>
-                    <td>${p.isEmergency ? 'Yes':'No'}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-// ===== 订阅今天（按 dayKey）=====
-function watchToday(){
-  if (unsubscribe) unsubscribe();
-  const key = chicagoDayKey(new Date());
-  unsubscribe = db.collection('passes')
-    .where('dayKey','==', key)
-    .onSnapshot(snap=>{
-      const rows = [];
-      snap.forEach(doc => rows.push(doc.data()));
-      todaysRows = rows;
-      renderCounts(rows);
-      renderTable(rows);
-    }, err=>{
-      console.error('Snapshot error:', err);
-      alert('Reading data failed. Check rules/domains/login (see console).');
-    });
-}
-
-// ===== 提交（按编号做 3 次上限 + 30s 防重复）=====
-const lastClick = new Map();
-form.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  const u = auth.currentUser;
-  if (!u) { alert('Please sign in.'); return; }
-
-  const n = parseInt(numInput.value, 10);
-  if (!Number.isInteger(n) || n < 1 || n > 600) { msg.textContent = '请输入 1–600 的学生编号。'; return; }
-  const s = await getStudentByNumber(n);
-  if (!s) { msg.textContent = '未找到该学生编号，请检查 students 集合。'; return; }
-  const emergency = !!emg.checked;
-
-  const nowMs = Date.now();
-  const last = lastClick.get(n);
-  if (last && (nowMs - last) < 30_000) { msg.textContent='Duplicate click ignored (within 30s).'; return; }
-
-  const nonEmergencyCount = todaysRows.reduce((acc,p)=> acc + ((p.studentNumber===n && !p.isEmergency)?1:0), 0);
-  if (!emergency && nonEmergencyCount >= 3) { msg.textContent='Reached daily limit (3).'; return; }
-
-  try{
-    await db.collection('passes').add({
-      studentNumber: n,
-      studentName: s.name || '',
-      grade: s.grade || '',
-      teacherUid: u.uid,
-      teacherEmail: u.email || '',
-      isEmergency: emergency,
-      createdAt: firebase.firestore.Timestamp.now(),
-      dayKey: chicagoDayKey(new Date())
-    });
-    lastClick.set(n, Date.now());
-    msg.textContent = 'Recorded ✅';
-  }catch(err){
-    console.error(err);
-    alert('Creating record failed (see console).');
-  }
-});
-
-// ===== 登录 / 登出 =====
-loginBtn.onclick = async ()=>{
-  try{
-    const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithPopup(provider);
-    // 如果编号已经填好并且查到了学生，再启用按钮
-    const n = parseInt(numInput.value, 10);
-    if (Number.isInteger(n) && n>=1 && n<=600) {
-      const s = await getStudentByNumber(n);
-      recordBtn.disabled = !s;
-    }
-  }catch(e){
-    console.error(e);
-    if (String(e?.code).includes('auth/unauthorized-domain')){
-      const host = location.host;
-      domainAlert.classList.remove('hidden');
-      domainAlert.innerHTML = `
-        <div><strong>当前域名未加入 Firebase 白名单：</strong> <code>${host}</code></div>
-        <ol style="margin:6px 0 0 18px;">
-          <li>Firebase → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
-          <li>Add domain：<code>${host}</code>（建议也加 <code>lubbock-hsa-bathroom-pass.vercel.app</code> 和 <code>localhost</code>）</li>
-          <li>保存后强制刷新（Ctrl+F5 / Cmd+Shift+R）再登录</li>
-        </ol>`;
-      alert('This domain is not authorized for Google sign-in.');
-    } else {
-      alert('Google sign-in failed. See console.');
-    }
-  }
-};
-logoutBtn.onclick = ()=> auth.signOut();
-
-auth.onAuthStateChanged(u=>{
-  if (u){
-    whoEl.textContent = `Signed in as ${u.email || u.uid}`;
-    loginBtn.classList.add('hidden');
-    logoutBtn.classList.remove('hidden');
-    watchToday();
-    // 重新评估按钮可用状态
-    recordBtn.disabled = !(numInput.value && nameOutput.value);
-  } else {
-    whoEl.textContent = 'Not signed in';
-    loginBtn.classList.remove('hidden');
-    logoutBtn.classList.add('hidden');
-    if (unsubscribe) unsubscribe();
-    todaysRows = [];
-    list.innerHTML = '';
-    tbody.innerHTML = '';
-    emptyMsg.style.display = 'block';
-    recordBtn.disabled = true;
-  }
-});
-</script>
 </body>
 </html>
