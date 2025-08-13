@@ -1,86 +1,55 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bathroom Pass – HSA Lubbock</title>
-  <style>
-    :root { --pad: 14px; --radius: 14px; --border: #ddd; --muted:#666; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; color:#111; }
-    header, main { max-width: 900px; margin: 0 auto; padding: var(--pad); }
-    .card { border:1px solid var(--border); border-radius: var(--radius); padding: var(--pad); box-shadow: 0 1px 4px rgba(0,0,0,.04); }
-    .row { display:flex; gap:12px; align-items:center; }
-    .grow { flex:1; }
-    input[type=text] { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); }
-    button { padding:10px 14px; border:1px solid var(--border); border-radius:12px; background:#fff; cursor:pointer; }
-    button.primary { border-color:#222; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
-    @media (min-width: 720px){ .grid{ grid-template-columns: 1fr 1fr; } }
-    ul { list-style:none; padding:0; margin:0; }
-    li.item { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius: 12px; padding:10px 12px; }
-    .muted{ color:var(--muted); font-size: 12px;}
-    .danger{ color:#b00020; font-weight:600; }
-    .ok{ font-weight:600; }
-    .hidden{ display:none; }
-    .badge{ font-size:12px; border:1px solid var(--border); border-radius:999px; padding:3px 8px; }
-    table { width:100%; border-collapse: collapse; }
-    th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
-    th { font-size:12px; color:#444; }
-    .alert { border:1px dashed #f3b; background:#fff7fb; padding:10px 12px; border-radius:12px; margin-top:8px; }
-    code { background:#f5f5f5; padding:1px 6px; border-radius:6px; }
-  </style>
+  <meta charset="UTF-8" />
+  <title>HSA Lubbock · Bathroom Pass</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-<header class="row">
-  <div class="grow">
-    <h1 style="margin:0 0 4px;">Bathroom Pass</h1>
-    <div id="who" class="muted">Not signed in</div>
-  </div>
-  <div class="row">
-    <button id="loginBtn" class="primary">Sign in with Google</button>
-    <button id="logoutBtn" class="hidden">Logout</button>
-  </div>
-</header>
 
-<main>
-  <!-- Quick Record -->
-  <section class="card">
-    <h2 style="margin:0 0 10px;">Quick Record</h2>
-    <form id="recordForm" class="row" autocomplete="off">
-      <input id="studentInput" class="grow" type="text" placeholder="Type student name (e.g., Student A)" required />
-      <label class="row" style="gap:6px; font-size:14px;"><input id="emg" type="checkbox" /> Emergency/Exempt</label>
-      <button type="submit" class="primary">Record</button>
-    </form>
-    <div class="muted" style="margin-top:6px;">• Max 3 per day (America/Chicago). Emergency entries don’t count toward the limit.</div>
-    <div id="msg" class="muted" style="margin-top:6px;"></div>
-    <div id="domainAlert" class="alert hidden"></div>
-  </section>
+<script>
+  // 自动跳转到正式域名，避免 OAuth 域名错误
+  if (location.hostname !== "lubbock-hsa-bathroom-pass.vercel.app" && location.hostname !== "localhost") {
+    location.href = "https://lubbock-hsa-bathroom-pass.vercel.app";
+  }
+</script>
 
-  <!-- Today Counts -->
-  <section class="grid" style="margin-top:16px;">
-    <div class="card">
-      <h3 style="margin:0 0 8px;">Today’s Counts (Max 3)</h3>
-      <div id="emptyMsg" class="muted">No records yet.</div>
-      <ul id="list"></ul>
-    </div>
+<h1>Bathroom Pass System</h1>
 
-    <div class="card">
-      <h3 style="margin:0 0 8px;">Latest Records (today)</h3>
-      <table id="table">
-        <thead><tr><th>Time (CT)</th><th>Student</th><th>Teacher</th><th>Emergency</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  </section>
-</main>
+<!-- 登录按钮 -->
+<button id="loginBtn">Sign in with Google</button>
+<div id="userInfo"></div>
 
-<!-- Firebase SDKs (compat for simplicity) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+<!-- Quick Record -->
+<h2>Quick Record</h2>
+<input type="text" id="studentName" placeholder="Student Name" />
+<button id="recordBtn">Record</button>
 
-<script type="text/javascript">
-  // ==== Firebase config (yours) ====
+<!-- 今日统计 -->
+<h2>Today’s Counts (Max 3)</h2>
+<ul id="todayList"></ul>
+
+<!-- 最新记录 -->
+<h2>Latest Records</h2>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Student</th>
+      <th>Teacher</th>
+      <th>Emergency</th>
+    </tr>
+  </thead>
+  <tbody id="latestTable"></tbody>
+</table>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+
+<script>
+  // Firebase 配置
   const firebaseConfig = {
     apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
     authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
@@ -91,200 +60,87 @@
     measurementId: "G-ENKQZMW0H8"
   };
 
-  // ==== Init ====
-  firebase.initializeApp(firebaseConfig);
+  // 初始化 Firebase
+  const app = firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // ==== Elements ====
-  const whoEl = document.getElementById('who');
-  const loginBtn = document.getElementById('loginBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const form = document.getElementById('recordForm');
-  const input = document.getElementById('studentInput');
-  const emg = document.getElementById('emg');
-  const list = document.getElementById('list');
-  const tbody = document.getElementById('tbody');
-  const msg = document.getElementById('msg');
-  const emptyMsg = document.getElementById('emptyMsg');
-  const domainAlert = document.getElementById('domainAlert');
-
-  // ==== Auth UI ====
-  loginBtn.onclick = async () => {
-    try {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      await auth.signInWithPopup(provider);
-    } catch (e) {
-      console.error(e);
-      // 专门处理未授权域名
-      if (String(e && e.code).includes('auth/unauthorized-domain')) {
-        const host = location.host;
-        domainAlert.classList.remove('hidden');
-        domainAlert.innerHTML = `
-          <div><strong>当前域名未加入 Firebase 白名单：</strong> <code>${host}</code></div>
-          <ol style="margin:6px 0 0 18px;">
-            <li>打开 Firebase 控制台 → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
-            <li>点击 <b>Add domain</b>，添加：<code>${host}</code></li>
-            <li>建议一并添加：<code>lubbock-hsa-bathroom-pass.vercel.app</code> 和 <code>localhost</code></li>
-            <li>保存后，回到本页 <b>强制刷新</b>（Windows: Ctrl+F5 / Mac: Cmd+Shift+R）再登录</li>
-          </ol>
-        `;
-        // 提供一个控制台直达链接（需登录同账号）
-        const projectId = firebaseConfig.projectId;
-        console.log('Open this to add domain:', 
-          `https://console.firebase.google.com/u/0/project/${projectId}/authentication/settings`);
-        alert('This domain is not authorized for Google sign-in. See the purple box for steps.');
-      } else {
-        alert('Google sign-in failed. See console for details.');
-      }
-    }
+  // 登录
+  document.getElementById("loginBtn").onclick = () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider)
+      .then(result => {
+        document.getElementById("userInfo").innerText = `Signed in as ${result.user.email}`;
+      })
+      .catch(err => console.error(err));
   };
-  logoutBtn.onclick = () => auth.signOut();
 
-  // ==== Time helpers (America/Chicago day range) ====
-  function chicagoDayRange(now = new Date()){
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month:'2-digit', day:'2-digit'}).formatToParts(now);
-    const y = parts.find(p=>p.type==='year').value;
-    const m = parts.find(p=>p.type==='month').value;
-    const d = parts.find(p=>p.type==='day').value;
-    const localMidnight = new Date(new Date(`${y}-${m}-${d}T00:00:00`).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-    const startUtc = new Date(Date.UTC(localMidnight.getFullYear(), localMidnight.getMonth(), localMidnight.getDate(), 0,0,0));
-    const endUtc = new Date(startUtc.getTime() + 24*60*60*1000);
-    return { startUtc, endUtc };
-  }
-  function formatChicago(ts){
-    const date = ts.toDate ? ts.toDate() : new Date(ts);
-    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
-  }
-
-  // ==== In-memory cache of today's rows ====
-  let todaysRows = [];
-
-  // ==== Renderers ====
-  function renderCounts(rows){
-    const counts = {};
-    rows.forEach(p => { if (!p.isEmergency) counts[p.studentName] = (counts[p.studentName]||0)+1; });
-
-    list.innerHTML = '';
-    const entries = Object.entries(counts);
-    emptyMsg.style.display = entries.length ? 'none' : 'block';
-    entries.forEach(([name, c])=>{
-      const li = document.createElement('li');
-      li.className = 'item';
-      const span = document.createElement('span');
-      span.textContent = name;
-      const badge = document.createElement('span');
-      badge.className = 'badge ' + (c>=3? 'danger':'ok');
-      badge.textContent = `${c}/3`;
-      li.appendChild(span);
-      li.appendChild(badge);
-      list.appendChild(li);
+  // 记录上厕所
+  document.getElementById("recordBtn").onclick = async () => {
+    const student = document.getElementById("studentName").value.trim();
+    if (!student) return alert("Please enter student name");
+    const teacher = auth.currentUser ? auth.currentUser.email : "Unknown";
+    await db.collection("passes").add({
+      studentName: student,
+      teacher: teacher,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      emergency: false
     });
-  }
+    alert("Recorded!");
+  };
 
-  function renderTable(rows){
-    tbody.innerHTML = '';
-    rows.forEach(p=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${p.createdAt ? formatChicago(p.createdAt) : ''}</td>
-                      <td>${p.studentName || ''}</td>
-                      <td>${p.teacherEmail || ''}</td>
-                      <td>${p.isEmergency ? 'Yes':'No'}</td>`;
-      tbody.appendChild(tr);
-    });
-  }
-
-  // ==== Live query for today's records ====
-  let unsubscribe = null;
-  function watchToday(){
-    if (unsubscribe) unsubscribe();
-    const { startUtc, endUtc } = chicagoDayRange(new Date());
-
-    unsubscribe = db.collection('passes')
-      .where('createdAt', '>=', startUtc)
-      .where('createdAt', '<', endUtc)
-      .orderBy('createdAt', 'desc')
-      .onSnapshot(snap => {
-        const rows = [];
-        snap.forEach(doc => rows.push(doc.data()));
-        todaysRows = rows;
-        renderCounts(rows);
-        renderTable(rows);
-      }, err => {
-        console.error('Snapshot error:', err);
-        alert('Reading data failed (see console). Check Firestore rules/domains/login.');
+  // 显示今日统计
+  function loadTodayCounts() {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    db.collection("passes")
+      .where("createdAt", ">=", today)
+      .orderBy("createdAt", "desc")
+      .onSnapshot(snapshot => {
+        const counts = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          counts[data.studentName] = (counts[data.studentName] || 0) + 1;
+        });
+        const ul = document.getElementById("todayList");
+        ul.innerHTML = "";
+        for (let student in counts) {
+          const li = document.createElement("li");
+          li.innerText = `${student} ${counts[student]}/3`;
+          ul.appendChild(li);
+        }
       });
   }
 
-  // ==== Create pass ====
-  const lastClick = new Map();
-  form.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const u = auth.currentUser;
-    if (!u) { alert('Please sign in.'); return; }
-
-    const name = input.value.trim();
-    if (!name) return;
-    const emergency = !!emg.checked;
-
-    // 30s guard
-    const nowMs = Date.now();
-    const last = lastClick.get(name);
-    if (last && (nowMs - last) < 30_000) {
-      msg.textContent = 'Duplicate click ignored (within 30s).';
-      input.value = '';
-      emg.checked = false;
-      return;
-    }
-
-    try {
-      const nonEmergencyCount = todaysRows.reduce((acc, p) => {
-        return acc + ((p.studentName === name && !p.isEmergency) ? 1 : 0);
-      }, 0);
-      if (!emergency && nonEmergencyCount >= 3) {
-        msg.textContent = 'Reached daily limit (3).';
-        input.value = '';
-        emg.checked = false;
-        return;
-      }
-
-      await db.collection('passes').add({
-        studentName: name,
-        teacherUid: u.uid,
-        teacherEmail: u.email || '',
-        isEmergency: emergency,
-        createdAt: firebase.firestore.Timestamp.now(),
+  // 显示最新记录
+  function loadLatestRecords() {
+    db.collection("passes")
+      .orderBy("createdAt", "desc")
+      .limit(10)
+      .onSnapshot(snapshot => {
+        const tbody = document.getElementById("latestTable");
+        tbody.innerHTML = "";
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${d.createdAt?.toDate().toLocaleString() || ""}</td>
+            <td>${d.studentName}</td>
+            <td>${d.teacher}</td>
+            <td>${d.emergency ? "Yes" : "No"}</td>
+          `;
+          tbody.appendChild(tr);
+        });
       });
+  }
 
-      lastClick.set(name, Date.now());
-      msg.textContent = 'Recorded ✅';
-      input.value = '';
-      emg.checked = false;
-    } catch (err) {
-      console.error(err);
-      alert('Creating record failed (see console).');
-    }
-  });
-
-  // ==== Auth state ====
-  auth.onAuthStateChanged(u=>{
-    if (u){
-      whoEl.textContent = `Signed in as ${u.email || u.uid}`;
-      loginBtn.classList.add('hidden');
-      logoutBtn.classList.remove('hidden');
-      watchToday();
-    } else {
-      whoEl.textContent = 'Not signed in';
-      loginBtn.classList.remove('hidden');
-      logoutBtn.classList.add('hidden');
-      if (unsubscribe) unsubscribe();
-      todaysRows = [];
-      list.innerHTML = '';
-      tbody.innerHTML = '';
-      emptyMsg.style.display = 'block';
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      document.getElementById("userInfo").innerText = `Signed in as ${user.email}`;
+      loadTodayCounts();
+      loadLatestRecords();
     }
   });
 </script>
-
 </body>
 </html>
