@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>HSA Lubbock · Bathroom Pass</title>
 
-  <!-- 内置小图标，避免 /favicon.ico 404 -->
+  <!-- 小图标，避免 /favicon 404 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23005BBB'/%3E%3Cpath d='M20 18h24v6H20zM24 28h16v18H24z' fill='%23FFD500'/%3E%3C/svg%3E" />
 
   <style>
@@ -35,7 +35,7 @@
   </style>
 
   <script>
-    // 强制使用正式域名，避免 OAuth 未授权域名错误
+    // 强制使用正式域名，避免 OAuth 未授权域名
     (function(){
       var host = location.hostname;
       if (host !== "lubbock-hsa-bathroom-pass.vercel.app" && host !== "localhost") {
@@ -57,7 +57,6 @@
 </header>
 
 <main>
-  <!-- Quick Record -->
   <section class="card">
     <h2 style="margin:0 0 10px;">Quick Record</h2>
     <form id="recordForm" autocomplete="off">
@@ -82,7 +81,7 @@
         <button id="recordBtn" type="submit" class="primary" disabled>Record</button>
       </div>
     </form>
-    <div id="msg" class="muted" style="margin-top:6px;">• 输入编号后会自动显示姓名与年级；未找到编号将无法提交。</div>
+    <div id="msg" class="muted" style="margin-top:6px;">• 输入编号后会自动显示姓名与年级；未找到编号或未登录将无法提交。</div>
     <div id="domainAlert" class="alert hidden"></div>
   </section>
 
@@ -103,7 +102,7 @@
   </section>
 </main>
 
-<!-- ✅ compat 版 SDK -->
+<!-- compat 版 SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
@@ -156,83 +155,73 @@ function formatChicago(ts){
   return new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
 }
 
-// ===== 学生名册内存索引（可选：若你学生很多，也可以用 where 查询单个编号）=====
-let rosterByNumber = new Map(); // number -> {id, number, name, grade}
-async function loadRosterOnce() {
-  // 读取全部 students（600 条量级，前端缓存 OK）
-  const snap = await db.collection('students').get();
-  rosterByNumber = new Map(
-    snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(s => typeof s.number === 'number' && s.number >= 1)
-      .map(s => [s.number, s])
-  );
+// ===== 学生查找（优先 Document ID，其次 number 字段）=====
+async function getStudentByNumber(n){
+  // 1) 先按 Document ID 直接取（你现在的做法）
+  const id = String(n);
+  const byId = await db.collection('students').doc(id).get();
+  if (byId.exists) {
+    return { id: byId.id, ...byId.data() };
+  }
+  // 2) 退回按 number 字段匹配（兼容另一种建库方式）
+  const q = await db.collection('students').where('number','==', n).limit(1).get();
+  if (!q.empty){
+    const d=q.docs[0];
+    return { id: d.id, ...d.data() };
+  }
+  return null;
 }
 
-// ===== 输入编号后自动显示姓名+年级 =====
-async function resolveStudentByNumber(n) {
-  if (!n) return null;
-  let s = rosterByNumber.get(n);
-  // 若没缓存到，再试一次单条查询（以防你没导入全部数据）
-  if (!s) {
-    const q = await db.collection('students').where('number','==', n).limit(1).get();
-    if (!q.empty) {
-      const d = q.docs[0];
-      s = { id: d.id, ...d.data() };
-      rosterByNumber.set(n, s);
-    }
-  }
-  return s || null;
-}
-numInput.addEventListener('input', async () => {
+// ===== 输入编号后，自动填充姓名/年级，并校验可提交 =====
+numInput.addEventListener('input', async ()=>{
   const n = parseInt(numInput.value, 10);
+  nameOutput.value = ''; gradeOutput.value = '';
+  recordBtn.disabled = true;
+
   if (!Number.isInteger(n) || n < 1 || n > 600) {
-    nameOutput.value = '';
-    gradeOutput.value = '';
-    recordBtn.disabled = true;
     msg.textContent = '请输入 1–600 的学生编号。';
     return;
   }
-  const s = await resolveStudentByNumber(n);
+  const s = await getStudentByNumber(n);
   if (!s) {
-    nameOutput.value = '';
-    gradeOutput.value = '';
-    recordBtn.disabled = true;
     msg.textContent = '未找到该学生编号，请检查 students 集合。';
-  } else {
-    nameOutput.value = s.name || '';
-    gradeOutput.value = s.grade || '';
-    recordBtn.disabled = false;
-    msg.textContent = '';
+    return;
   }
+  nameOutput.value = s.name || '';
+  gradeOutput.value = s.grade || '';
+  msg.textContent = '';
+
+  // 必须已经登录才允许提交
+  if (auth.currentUser) recordBtn.disabled = false;
 });
 
 // ===== 状态 =====
-let todaysRows = [];     // 今天的全部 passes
+let todaysRows = [];
 let unsubscribe = null;
 
 // ===== 渲染 =====
 function renderCounts(rows){
-  // 统计按 studentNumber
-  const counts = new Map(); // number -> {count, name, grade}
-  rows.forEach(p => {
-    if (p.isEmergency) return; // 紧急不计数
+  // 按编号聚合（非紧急）
+  const counts = new Map(); // num -> {c, name, grade}
+  rows.forEach(p=>{
+    if (p.isEmergency) return;
     const num = p.studentNumber;
-    const n = (rosterByNumber.get(num)?.name) || p.studentName || `#${num}`;
-    const g = (rosterByNumber.get(num)?.grade) || p.grade || '';
-    const cur = counts.get(num) || { count:0, name:n, grade:g };
-    cur.count += 1;
+    const cur = counts.get(num) || { c:0, name: p.studentName || ('#'+num), grade: p.grade || '' };
+    cur.c += 1;
+    // 最新的 name/grade 覆盖一下
+    if (p.studentName) cur.name = p.studentName;
+    if (p.grade) cur.grade = p.grade;
     counts.set(num, cur);
   });
 
   list.innerHTML = '';
-  const items = [...counts.entries()].sort((a,b)=> b[1].count - a[1].count);
+  const items = [...counts.entries()].sort((a,b)=> b[1].c - a[1].c);
   emptyMsg.style.display = items.length ? 'none' : 'block';
   items.forEach(([num, info])=>{
     const li = document.createElement('li');
     li.className = 'item';
     li.innerHTML = `<span>#${num} — ${info.name}${info.grade?(' — G'+info.grade):''}</span>
-                    <span class="badge ${info.count>=3?'danger':''}">${info.count}/3</span>`;
+                    <span class="badge ${info.c>=3?'danger':''}">${info.c}/3</span>`;
     list.appendChild(li);
   });
 }
@@ -244,72 +233,53 @@ function renderTable(rows){
   });
   tbody.innerHTML = '';
   sorted.forEach(p=>{
-    const s = rosterByNumber.get(p.studentNumber) || {};
-    const name = s.name || p.studentName || `#${p.studentNumber}`;
-    const grade = s.grade || p.grade || '';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.createdAt ? formatChicago(p.createdAt) : ''}</td>
-                    <td>${name}</td>
-                    <td>${grade}</td>
+                    <td>${p.studentName || ('#'+p.studentNumber)}</td>
+                    <td>${p.grade || ''}</td>
                     <td>${p.teacherEmail || ''}</td>
                     <td>${p.isEmergency ? 'Yes':'No'}</td>`;
     tbody.appendChild(tr);
   });
 }
 
-// ===== 订阅今天的数据：按 dayKey（稳定，不涉时区/索引）=====
+// ===== 订阅今天（按 dayKey）=====
 function watchToday(){
   if (unsubscribe) unsubscribe();
   const key = chicagoDayKey(new Date());
   unsubscribe = db.collection('passes')
     .where('dayKey','==', key)
-    .onSnapshot(snap => {
+    .onSnapshot(snap=>{
       const rows = [];
       snap.forEach(doc => rows.push(doc.data()));
       todaysRows = rows;
       renderCounts(rows);
       renderTable(rows);
-    }, err => {
+    }, err=>{
       console.error('Snapshot error:', err);
       alert('Reading data failed. Check rules/domains/login (see console).');
     });
 }
 
-// ===== 提交记录：按 studentNumber 判断 3 次上限 + 30 秒防重复 =====
-const lastClick = new Map(); // per-studentNumber 30s guard
+// ===== 提交（按编号做 3 次上限 + 30s 防重复）=====
+const lastClick = new Map();
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const u = auth.currentUser;
   if (!u) { alert('Please sign in.'); return; }
 
   const n = parseInt(numInput.value, 10);
-  if (!Number.isInteger(n) || n < 1 || n > 600) {
-    msg.textContent = '请输入 1–600 的学生编号。';
-    return;
-  }
-  const s = await resolveStudentByNumber(n);
-  if (!s) {
-    msg.textContent = '未找到该学生编号，请检查 students 集合。';
-    return;
-  }
+  if (!Number.isInteger(n) || n < 1 || n > 600) { msg.textContent = '请输入 1–600 的学生编号。'; return; }
+  const s = await getStudentByNumber(n);
+  if (!s) { msg.textContent = '未找到该学生编号，请检查 students 集合。'; return; }
   const emergency = !!emg.checked;
 
-  // 30s 防重复
   const nowMs = Date.now();
   const last = lastClick.get(n);
-  if (last && (nowMs - last) < 30_000) {
-    msg.textContent = 'Duplicate click ignored (within 30s).';
-    return;
-  }
+  if (last && (nowMs - last) < 30_000) { msg.textContent='Duplicate click ignored (within 30s).'; return; }
 
-  // 今天该学生的非紧急次数（按 number）
-  const nonEmergencyCount = todaysRows.reduce((acc, p)=>{
-    return acc + ((p.studentNumber === n && !p.isEmergency) ? 1 : 0);
-  }, 0);
-  if (!emergency && nonEmergencyCount >= 3) {
-    msg.textContent = 'Reached daily limit (3).';
-    return;
-  }
+  const nonEmergencyCount = todaysRows.reduce((acc,p)=> acc + ((p.studentNumber===n && !p.isEmergency)?1:0), 0);
+  if (!emergency && nonEmergencyCount >= 3) { msg.textContent='Reached daily limit (3).'; return; }
 
   try{
     await db.collection('passes').add({
@@ -319,13 +289,11 @@ form.addEventListener('submit', async (e)=>{
       teacherUid: u.uid,
       teacherEmail: u.email || '',
       isEmergency: emergency,
-      createdAt: firebase.firestore.Timestamp.now(), // 立即可见
+      createdAt: firebase.firestore.Timestamp.now(),
       dayKey: chicagoDayKey(new Date())
     });
     lastClick.set(n, Date.now());
     msg.textContent = 'Recorded ✅';
-    // 保持输入框不清空，方便同一学生多次操作；如需清空请解除下面两行注释：
-    // numInput.value = ''; nameOutput.value = ''; gradeOutput.value = ''; recordBtn.disabled = true; 
   }catch(err){
     console.error(err);
     alert('Creating record failed (see console).');
@@ -333,14 +301,56 @@ form.addEventListener('submit', async (e)=>{
 });
 
 // ===== 登录 / 登出 =====
-loginBtn.onclick = async () => {
-  try {
+loginBtn.onclick = async ()=>{
+  try{
     const provider = new firebase.auth.GoogleAuthProvider();
     await auth.signInWithPopup(provider);
-  } catch (e) {
+    // 如果编号已经填好并且查到了学生，再启用按钮
+    const n = parseInt(numInput.value, 10);
+    if (Number.isInteger(n) && n>=1 && n<=600) {
+      const s = await getStudentByNumber(n);
+      recordBtn.disabled = !s;
+    }
+  }catch(e){
     console.error(e);
-    if (String(e && e.code).includes('auth/unauthorized-domain')) {
+    if (String(e?.code).includes('auth/unauthorized-domain')){
       const host = location.host;
       domainAlert.classList.remove('hidden');
       domainAlert.innerHTML = `
         <div><strong>当前域名未加入 Firebase 白名单：</strong> <code>${host}</code></div>
+        <ol style="margin:6px 0 0 18px;">
+          <li>Firebase → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
+          <li>Add domain：<code>${host}</code>（建议也加 <code>lubbock-hsa-bathroom-pass.vercel.app</code> 和 <code>localhost</code>）</li>
+          <li>保存后强制刷新（Ctrl+F5 / Cmd+Shift+R）再登录</li>
+        </ol>`;
+      alert('This domain is not authorized for Google sign-in.');
+    } else {
+      alert('Google sign-in failed. See console.');
+    }
+  }
+};
+logoutBtn.onclick = ()=> auth.signOut();
+
+auth.onAuthStateChanged(u=>{
+  if (u){
+    whoEl.textContent = `Signed in as ${u.email || u.uid}`;
+    loginBtn.classList.add('hidden');
+    logoutBtn.classList.remove('hidden');
+    watchToday();
+    // 重新评估按钮可用状态
+    recordBtn.disabled = !(numInput.value && nameOutput.value);
+  } else {
+    whoEl.textContent = 'Not signed in';
+    loginBtn.classList.remove('hidden');
+    logoutBtn.classList.add('hidden');
+    if (unsubscribe) unsubscribe();
+    todaysRows = [];
+    list.innerHTML = '';
+    tbody.innerHTML = '';
+    emptyMsg.style.display = 'block';
+    recordBtn.disabled = true;
+  }
+});
+</script>
+</body>
+</html>
