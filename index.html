@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>HSA Lubbock · Bathroom Pass</title>
 
+  <!-- 小图标，避免 /favicon 404 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23005BBB'/%3E%3Cpath d='M20 18h24v6H20zM24 28h16v18H24z' fill='%23FFD500'/%3E%3C/svg%3E" />
 
   <style>
@@ -26,7 +27,7 @@
     li.item { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
     .badge { font-size:12px; border:1px solid var(--border); border-radius:999px; padding:3px 8px; }
     .danger { color:#b00020; font-weight:600; }
-    table { width:100%; border-collapse: collapse; }
+    table { width:100%; border-collapse:collapse; }
     th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
     th { font-size:12px; color:#444; }
     .hidden { display:none; }
@@ -34,7 +35,8 @@
   </style>
 
   <script>
-    (function(){ // lock to your prod domain
+    // 建议锁定正式域名，避免未授权预览域名导致登录失败
+    (function(){
       var host = location.hostname;
       if (host !== "lubbock-hsa-bathroom-pass.vercel.app" && host !== "localhost") {
         location.href = "https://lubbock-hsa-bathroom-pass.vercel.app";
@@ -100,12 +102,13 @@
   </section>
 </main>
 
+<!-- Firebase compat SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
 
 <script>
-// -- Firebase config
+// ===== Firebase config（你的原始配置）=====
 const firebaseConfig = {
   apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
   authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
@@ -119,7 +122,7 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// -- DOM
+// ===== DOM =====
 const whoEl = document.getElementById('who');
 const loginBtn = document.getElementById('loginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -135,7 +138,7 @@ const msg = document.getElementById('msg');
 const emptyMsg = document.getElementById('emptyMsg');
 const domainAlert = document.getElementById('domainAlert');
 
-// -- Helpers (Chicago day + format)
+// ===== Helpers: Chicago dayKey / time format =====
 function chicagoDayParts(d=new Date()){
   const ps = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
   return { y:ps.find(p=>p.type==='year').value, m:ps.find(p=>p.type==='month').value, d:ps.find(p=>p.type==='day').value };
@@ -143,7 +146,7 @@ function chicagoDayParts(d=new Date()){
 function chicagoDayKey(d=new Date()){ const {y,m,d:dd}=chicagoDayParts(d); return `${y}-${m}-${dd}`; }
 function formatChicago(ts){ const date=ts?.toDate?ts.toDate():new Date(ts); return new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'2-digit',minute:'2-digit'}).format(date); }
 
-// -- Get student: try Document ID first; fallback to 'number' field
+// ===== Read student: try Document ID first; fallback to 'number' field =====
 async function getStudentByNumber(n){
   const id = String(n);
   const doc = await db.collection('students').doc(id).get();
@@ -152,8 +155,7 @@ async function getStudentByNumber(n){
     return {
       id: doc.id,
       name: data?.name || '',
-      // IMPORTANT: coerce grade to string so it always shows
-      grade: (data?.grade === 0 || data?.grade) ? String(data.grade) : ''
+      grade: (data?.grade === 0 || data?.grade) ? String(data.grade) : '' // 强制转字符串
     };
   }
   const q = await db.collection('students').where('number','==', n).limit(1).get();
@@ -168,7 +170,7 @@ async function getStudentByNumber(n){
   return null;
 }
 
-// -- On number input
+// ===== number 输入 → 自动填充 =====
 numInput.addEventListener('input', async ()=>{
   const n = parseInt(numInput.value, 10);
   nameOutput.value=''; gradeOutput.value=''; recordBtn.disabled = true;
@@ -180,7 +182,7 @@ numInput.addEventListener('input', async ()=>{
     const s = await getStudentByNumber(n);
     if (!s){ msg.textContent='Not found. Check students collection.'; return; }
     nameOutput.value = s.name;
-    gradeOutput.value = s.grade; // 👈 will show even if grade was numeric
+    gradeOutput.value = s.grade;
     msg.textContent = '';
     recordBtn.disabled = false;
   }catch(err){
@@ -189,11 +191,10 @@ numInput.addEventListener('input', async ()=>{
   }
 });
 
-// -- State
+// ===== State & render =====
 let todaysRows = [];
 let unsubscribe = null;
 
-// -- Render
 function renderCounts(rows){
   const counts = new Map(); // num -> {c, name, grade}
   rows.forEach(p=>{
@@ -201,7 +202,6 @@ function renderCounts(rows){
     const num = p.studentNumber;
     const cur = counts.get(num) || { c:0, name: p.studentName || ('#'+num), grade: (p.grade===0||p.grade)?String(p.grade):'' };
     cur.c += 1;
-    // keep latest name/grade
     if (p.studentName) cur.name = p.studentName;
     if (p.grade===0 || p.grade) cur.grade = String(p.grade);
     counts.set(num, cur);
@@ -236,7 +236,7 @@ function renderTable(rows){
   });
 }
 
-// -- Watch today
+// ===== Watch today by dayKey =====
 function watchToday(){
   if (unsubscribe) unsubscribe();
   const key = chicagoDayKey(new Date());
@@ -253,7 +253,7 @@ function watchToday(){
     });
 }
 
-// -- Submit
+// ===== Submit =====
 const lastClick = new Map();
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -278,7 +278,7 @@ form.addEventListener('submit', async (e)=>{
     await db.collection('passes').add({
       studentNumber: n,
       studentName: s.name || '',
-      grade: s.grade || '',               // 👈 save grade (string)
+      grade: s.grade || '',               // 保存 grade
       teacherUid: u.uid,
       teacherEmail: u.email || '',
       isEmergency: emergency,
@@ -293,35 +293,30 @@ form.addEventListener('submit', async (e)=>{
   }
 });
 
-// -- Auth
-loginBtn.onclick = async ()=>{
-  try{
-    const provider = new firebase.auth.GoogleAuthProvider();
+// ===== Auth with popup → fallback to redirect =====
+const provider = new firebase.auth.GoogleAuthProvider();
+
+async function signInSmart() {
+  try {
     await auth.signInWithPopup(provider);
-    // re-enable button if number is valid and student exists
-    const n = parseInt(numInput.value,10);
-    if (Number.isInteger(n) && n>=1 && n<=600){
-      const s = await getStudentByNumber(n);
-      recordBtn.disabled = !s;
-    }
-  }catch(e){
-    console.error(e);
-    if (String(e?.code).includes('auth/unauthorized-domain')){
-      const host = location.host;
-      domainAlert.classList.remove('hidden');
-      domainAlert.innerHTML = `
-        <div><strong>This domain is not authorized:</strong> <code>${host}</code></div>
-        <ol style="margin:6px 0 0 18px;">
-          <li>Firebase → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
-          <li>Add: <code>${host}</code> (and also <code>lubbock-hsa-bathroom-pass.vercel.app</code>, <code>localhost</code>)</li>
-          <li>Hard refresh (Ctrl+F5 / Cmd+Shift+R) then sign in again</li>
-        </ol>`;
-      alert('This domain is not authorized for Google sign-in.');
-    } else {
-      alert('Google sign-in failed. See console.');
-    }
+  } catch (e) {
+    console.warn('Popup sign-in failed, fallback to redirect:', e && e.code);
+    await auth.signInWithRedirect(provider);
   }
-};
+}
+loginBtn.onclick = signInSmart;
+
+auth.getRedirectResult()
+  .then(res => {
+    if (res && res.user) {
+      console.log('Redirect sign-in OK');
+    }
+  })
+  .catch(err => {
+    console.error('Redirect sign-in error:', err);
+    alert('Google sign-in failed. Check Authorized domains & API key restrictions.');
+  });
+
 logoutBtn.onclick = ()=> auth.signOut();
 
 auth.onAuthStateChanged(u=>{
@@ -330,7 +325,6 @@ auth.onAuthStateChanged(u=>{
     loginBtn.classList.add('hidden');
     logoutBtn.classList.remove('hidden');
     watchToday();
-    // if number already valid + resolved, enable
     recordBtn.disabled = !(numInput.value && nameOutput.value);
   } else {
     whoEl.textContent = 'Not signed in';
