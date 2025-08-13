@@ -31,8 +31,8 @@
   </style>
 
   <script>
-    // 自动跳转到正式域名，避免 OAuth 未授权域名
-    (function() {
+    // 自动跳到正式域名，避免 oauth 未授权域名
+    (function () {
       var host = location.hostname;
       if (host !== "lubbock-hsa-bathroom-pass.vercel.app" && host !== "localhost") {
         location.href = "https://lubbock-hsa-bathroom-pass.vercel.app";
@@ -53,7 +53,6 @@
 </header>
 
 <main>
-  <!-- Quick Record -->
   <section class="card">
     <h2 style="margin:0 0 10px;">Quick Record</h2>
     <form id="recordForm" class="row" autocomplete="off">
@@ -61,12 +60,11 @@
       <label class="row" style="gap:6px; font-size:14px;"><input id="emg" type="checkbox" /> Emergency/Exempt</label>
       <button type="submit" class="primary">Record</button>
     </form>
-    <div class="muted" style="margin-top:6px;">• Max 3 per day (America/Chicago). Emergency entries don’t count toward the limit.</div>
+    <div class="muted" style="margin-top:6px;">• Max 3/day (America/Chicago). Emergency entries don’t count.</div>
     <div id="msg" class="muted" style="margin-top:6px;"></div>
     <div id="domainAlert" class="alert hidden"></div>
   </section>
 
-  <!-- Today Counts + Latest -->
   <section class="grid" style="margin-top:16px;">
     <div class="card">
       <h3 style="margin:0 0 8px;">Today’s Counts (Max 3)</h3>
@@ -84,13 +82,13 @@
   </section>
 </main>
 
-<!-- ✅ 用 compat 版 CDN（而不是模块版） -->
+<!-- ✅ 使用 compat 版 SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
 
 <script>
-// ==== Firebase config（你的） ====
+// ===== Firebase config（你的）=====
 const firebaseConfig = {
   apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
   authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
@@ -100,13 +98,11 @@ const firebaseConfig = {
   appId: "1:20266028833:web:5219b6cfa07da654807860",
   measurementId: "G-ENKQZMW0H8"
 };
-
-// ==== Init ====
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// ==== Elements ====
+// ===== DOM =====
 const whoEl = document.getElementById('who');
 const loginBtn = document.getElementById('loginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -119,7 +115,27 @@ const msg = document.getElementById('msg');
 const emptyMsg = document.getElementById('emptyMsg');
 const domainAlert = document.getElementById('domainAlert');
 
-// ==== Auth UI ====
+// ===== Helpers: Chicago 时区 dayKey / 时间格式 =====
+function chicagoDayParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', { // en-CA gives yyyy-mm-dd easily
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date);
+  const y = parts.find(p=>p.type==='year').value;
+  const m = parts.find(p=>p.type==='month').value;
+  const d = parts.find(p=>p.type==='day').value;
+  return { y, m, d }; // strings
+}
+function chicagoDayKey(date = new Date()) {
+  const {y,m,d} = chicagoDayParts(date);
+  return `${y}-${m}-${d}`; // e.g. 2025-08-12
+}
+function formatChicago(ts){
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  return new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
+}
+
+// ===== Auth =====
 loginBtn.onclick = async () => {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -133,9 +149,8 @@ loginBtn.onclick = async () => {
         <div><strong>当前域名未加入 Firebase 白名单：</strong> <code>${host}</code></div>
         <ol style="margin:6px 0 0 18px;">
           <li>Firebase → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
-          <li>点击 <b>Add domain</b>，添加：<code>${host}</code></li>
-          <li>建议一并添加：<code>lubbock-hsa-bathroom-pass.vercel.app</code>、<code>localhost</code></li>
-          <li>保存后，回到本页 <b>强制刷新</b>（Win: Ctrl+F5 / Mac: Cmd+Shift+R）再登录</li>
+          <li><b>Add domain</b>：<code>${host}</code>；建议一并添加 <code>lubbock-hsa-bathroom-pass.vercel.app</code>、<code>localhost</code></li>
+          <li>保存后强制刷新（Ctrl+F5 / Cmd+Shift+R）再登录</li>
         </ol>
       `;
       console.log('Add domain here:', `https://console.firebase.google.com/u/0/project/${firebaseConfig.projectId}/authentication/settings`);
@@ -147,26 +162,10 @@ loginBtn.onclick = async () => {
 };
 logoutBtn.onclick = () => auth.signOut();
 
-// ==== Time helpers (America/Chicago day range) ====
-function chicagoDayRange(now = new Date()){
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month:'2-digit', day:'2-digit'}).formatToParts(now);
-  const y = parts.find(p=>p.type==='year').value;
-  const m = parts.find(p=>p.type==='month').value;
-  const d = parts.find(p=>p.type==='day').value;
-  const localMidnight = new Date(new Date(`${y}-${m}-${d}T00:00:00`).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-  const startUtc = new Date(Date.UTC(localMidnight.getFullYear(), localMidnight.getMonth(), localMidnight.getDate(), 0,0,0));
-  const endUtc = new Date(startUtc.getTime() + 24*60*60*1000);
-  return { startUtc, endUtc };
-}
-function formatChicago(ts){
-  const date = ts.toDate ? ts.toDate() : new Date(ts);
-  return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
-}
-
-// ==== In-memory cache of today's rows ====
+// ===== 本地缓存今天数据，用来判断 3 次上限 =====
 let todaysRows = [];
 
-// ==== Renderers ====
+// ===== 渲染 =====
 function renderCounts(rows){
   const counts = {};
   rows.forEach(p => { if (!p.isEmergency) counts[p.studentName] = (counts[p.studentName]||0)+1; });
@@ -187,8 +186,13 @@ function renderCounts(rows){
     list.appendChild(li);
   });
 }
-
 function renderTable(rows){
+  // 最新在前：按 createdAt 降序排（在前端排，避免需要索引）
+  rows.sort((a,b)=>{
+    const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+    const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+    return bt - at;
+  });
   tbody.innerHTML = '';
   rows.forEach(p=>{
     const tr = document.createElement('tr');
@@ -200,16 +204,14 @@ function renderTable(rows){
   });
 }
 
-// ==== Live query for TODAY (no composite index needed) ====
+// ===== 实时监听：按 dayKey 取“今天”的记录（不需要时间范围/索引）=====
 let unsubscribe = null;
 function watchToday(){
   if (unsubscribe) unsubscribe();
-  const { startUtc, endUtc } = chicagoDayRange(new Date());
+  const key = chicagoDayKey(new Date()); // e.g. 2025-08-12
 
   unsubscribe = db.collection('passes')
-    .where('createdAt', '>=', startUtc)
-    .where('createdAt', '<', endUtc)
-    .orderBy('createdAt', 'desc')  // 单字段索引即可
+    .where('dayKey', '==', key)
     .onSnapshot(snap => {
       const rows = [];
       snap.forEach(doc => rows.push(doc.data()));
@@ -222,8 +224,8 @@ function watchToday(){
     });
 }
 
-// ==== Create pass (client limit check + 30s guard) ====
-const lastClick = new Map(); // local 30s guard per student
+// ===== 创建记录：写入 dayKey，避免时区问题；前端判断 3 次上限 =====
+const lastClick = new Map(); // per-student 30 秒防连点
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const u = auth.currentUser;
@@ -233,7 +235,6 @@ form.addEventListener('submit', async (e)=>{
   if (!name) return;
   const emergency = !!emg.checked;
 
-  // 30s guard
   const nowMs = Date.now();
   const last = lastClick.get(name);
   if (last && (nowMs - last) < 30_000) {
@@ -244,11 +245,10 @@ form.addEventListener('submit', async (e)=>{
   }
 
   try {
-    // count from cached todaysRows
+    // 从缓存里数今天的次数（非紧急）
     const nonEmergencyCount = todaysRows.reduce((acc, p) => {
       return acc + ((p.studentName === name && !p.isEmergency) ? 1 : 0);
     }, 0);
-
     if (!emergency && nonEmergencyCount >= 3) {
       msg.textContent = 'Reached daily limit (3).';
       input.value = '';
@@ -256,27 +256,28 @@ form.addEventListener('submit', async (e)=>{
       return;
     }
 
+    const key = chicagoDayKey(new Date());
     await db.collection('passes').add({
       studentName: name,
       teacherUid: u.uid,
       teacherEmail: u.email || '',
       isEmergency: emergency,
-      // 立即可见（不等 serverTimestamp 回填）
-      createdAt: firebase.firestore.Timestamp.now(),
+      createdAt: firebase.firestore.Timestamp.now(), // 立即可见
+      dayKey: key
     });
 
     lastClick.set(name, Date.now());
     msg.textContent = 'Recorded ✅';
     input.value = '';
     emg.checked = false;
-    // onSnapshot 会自动更新列表
+    // onSnapshot 会自动刷新列表
   } catch (err) {
     console.error(err);
     alert('Creating record failed (see console).');
   }
 });
 
-// ==== Auth state ====
+// ===== 登录状态 =====
 auth.onAuthStateChanged(u=>{
   if (u){
     whoEl.textContent = `Signed in as ${u.email || u.uid}`;
