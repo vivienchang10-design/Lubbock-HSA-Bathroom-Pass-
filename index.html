@@ -26,6 +26,8 @@
     table { width:100%; border-collapse: collapse; }
     th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
     th { font-size:12px; color:#444; }
+    .alert { border:1px dashed #f3b; background:#fff7fb; padding:10px 12px; border-radius:12px; margin-top:8px; }
+    code { background:#f5f5f5; padding:1px 6px; border-radius:6px; }
   </style>
 </head>
 <body>
@@ -51,6 +53,7 @@
     </form>
     <div class="muted" style="margin-top:6px;">• Max 3 per day (America/Chicago). Emergency entries don’t count toward the limit.</div>
     <div id="msg" class="muted" style="margin-top:6px;"></div>
+    <div id="domainAlert" class="alert hidden"></div>
   </section>
 
   <!-- Today Counts -->
@@ -78,7 +81,6 @@
 
 <script type="text/javascript">
   // ==== Firebase config (yours) ====
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   const firebaseConfig = {
     apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
     authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
@@ -105,13 +107,37 @@
   const tbody = document.getElementById('tbody');
   const msg = document.getElementById('msg');
   const emptyMsg = document.getElementById('emptyMsg');
+  const domainAlert = document.getElementById('domainAlert');
 
   // ==== Auth UI ====
   loginBtn.onclick = async () => {
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
       await auth.signInWithPopup(provider);
-    } catch (e) { console.error(e); alert('Google sign-in failed. See console.'); }
+    } catch (e) {
+      console.error(e);
+      // 专门处理未授权域名
+      if (String(e && e.code).includes('auth/unauthorized-domain')) {
+        const host = location.host;
+        domainAlert.classList.remove('hidden');
+        domainAlert.innerHTML = `
+          <div><strong>当前域名未加入 Firebase 白名单：</strong> <code>${host}</code></div>
+          <ol style="margin:6px 0 0 18px;">
+            <li>打开 Firebase 控制台 → Authentication → <b>Settings</b> → <b>Authorized domains</b></li>
+            <li>点击 <b>Add domain</b>，添加：<code>${host}</code></li>
+            <li>建议一并添加：<code>lubbock-hsa-bathroom-pass.vercel.app</code> 和 <code>localhost</code></li>
+            <li>保存后，回到本页 <b>强制刷新</b>（Windows: Ctrl+F5 / Mac: Cmd+Shift+R）再登录</li>
+          </ol>
+        `;
+        // 提供一个控制台直达链接（需登录同账号）
+        const projectId = firebaseConfig.projectId;
+        console.log('Open this to add domain:', 
+          `https://console.firebase.google.com/u/0/project/${projectId}/authentication/settings`);
+        alert('This domain is not authorized for Google sign-in. See the purple box for steps.');
+      } else {
+        alert('Google sign-in failed. See console for details.');
+      }
+    }
   };
   logoutBtn.onclick = () => auth.signOut();
 
@@ -131,7 +157,7 @@
     return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour:'2-digit', minute:'2-digit' }).format(date);
   }
 
-  // ==== In-memory cache of today's rows (to avoid re-query for POST) ====
+  // ==== In-memory cache of today's rows ====
   let todaysRows = [];
 
   // ==== Renderers ====
@@ -168,7 +194,7 @@
     });
   }
 
-  // ==== Live query for today's records (no composite index needed) ====
+  // ==== Live query for today's records ====
   let unsubscribe = null;
   function watchToday(){
     if (unsubscribe) unsubscribe();
@@ -177,11 +203,11 @@
     unsubscribe = db.collection('passes')
       .where('createdAt', '>=', startUtc)
       .where('createdAt', '<', endUtc)
-      .orderBy('createdAt', 'desc') // 单字段 createdAt，Firestore 自动索引，OK
+      .orderBy('createdAt', 'desc')
       .onSnapshot(snap => {
         const rows = [];
         snap.forEach(doc => rows.push(doc.data()));
-        todaysRows = rows;            // 缓存今天的全部记录
+        todaysRows = rows;
         renderCounts(rows);
         renderTable(rows);
       }, err => {
@@ -190,8 +216,8 @@
       });
   }
 
-  // ==== Create pass (client-side limit check using todaysRows; no composite index) ====
-  const lastClick = new Map(); // local 30s guard per student
+  // ==== Create pass ====
+  const lastClick = new Map();
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const u = auth.currentUser;
@@ -201,7 +227,7 @@
     if (!name) return;
     const emergency = !!emg.checked;
 
-    // 30s guard (local)
+    // 30s guard
     const nowMs = Date.now();
     const last = lastClick.get(name);
     if (last && (nowMs - last) < 30_000) {
@@ -212,11 +238,9 @@
     }
 
     try {
-      // 用已经监听到的 todaysRows 在前端过滤该学生今天的非紧急次数
       const nonEmergencyCount = todaysRows.reduce((acc, p) => {
         return acc + ((p.studentName === name && !p.isEmergency) ? 1 : 0);
       }, 0);
-
       if (!emergency && nonEmergencyCount >= 3) {
         msg.textContent = 'Reached daily limit (3).';
         input.value = '';
@@ -229,7 +253,6 @@
         teacherUid: u.uid,
         teacherEmail: u.email || '',
         isEmergency: emergency,
-        // 立即可见（不等 serverTimestamp 回填）
         createdAt: firebase.firestore.Timestamp.now(),
       });
 
@@ -237,7 +260,6 @@
       msg.textContent = 'Recorded ✅';
       input.value = '';
       emg.checked = false;
-      // 不需要手动刷新，onSnapshot 会自动更新 todaysRows/列表
     } catch (err) {
       console.error(err);
       alert('Creating record failed (see console).');
