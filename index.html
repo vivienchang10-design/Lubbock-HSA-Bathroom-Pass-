@@ -1,199 +1,175 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8">
   <title>HSA Lubbock · Bathroom Pass</title>
-  <style>
-    body{font-family:system-ui,Arial,sans-serif;background:#f6f7fb;margin:0}
-    .wrap{max-width:900px;margin:0 auto;padding:24px}
-    .card{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:16px 0}
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    input,select,button{padding:10px 12px;border-radius:10px;border:1px solid #d1d5db}
-    button{cursor:pointer}
-    button.primary{background:#2563eb;color:#fff;border:0}
-    #error{color:#b91c1c;margin-top:8px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
-    .badge{padding:2px 8px;border-radius:999px;font-size:12px}
-    .ok{background:#e0f2fe;color:#0369a1}
-    .warn{background:#fee2e2;color:#b91c1c}
-  </style>
-
-  <!-- 使用 compat 版本，支持 firebase.initializeApp / firebase.auth() 语法 -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-firestore-compat.js"></script>
-
-  <script>
-    // 用你的真实配置（storageBucket 必须是 .appspot.com）
-    const firebaseConfig = {
-      apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
-      authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
-      projectId: "lubbock-hsa-bathroom-pass",
-      storageBucket: "lubbock-hsa-bathroom-pass.appspot.com",
-      messagingSenderId: "20266028833",
-      appId: "1:20266028833:web:5219b6cfa07da654807860",
-      measurementId: "G-ENKQZMW0H8"
-    };
-
-    // 初始化
-    try { firebase.initializeApp(firebaseConfig); } catch(e) {}
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-
-    // 小工具
-    const $ = (id)=>document.getElementById(id);
-    const startOfDay = (d=new Date()) => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
-
-    // 登录/登出
-    async function login() {
-      $("error").textContent = "";
-      const email = $("email").value.trim();
-      const pwd = $("password").value;
-      if (!email || !pwd) { $("error").textContent = "Enter email and password."; return; }
-      try {
-        await auth.signInWithEmailAndPassword(email, pwd);
-      } catch (e) {
-        $("error").textContent = e.message;
-      }
-    }
-    function logout() { auth.signOut(); }
-
-    // 登录状态变化：显示/隐藏应用界面
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        $("loginCard").style.display = "none";
-        $("appCard").style.display = "block";
-        $("who").textContent = user.email;
-        await refreshToday();
-        await loadHistory();
-      } else {
-        $("loginCard").style.display = "block";
-        $("appCard").style.display = "none";
-      }
-    });
-
-    // 今日统计
-    async function refreshToday() {
-      const q = await db.collection("bathroomLogs")
-        .where("timestamp", ">=", firebase.firestore.Timestamp.fromDate(startOfDay()))
-        .get();
-
-      const counts = {};
-      q.forEach(doc => {
-        const d = doc.data();
-        const id = d.studentId || d.studentName || "Unknown";
-        counts[id] = (counts[id]||0) + 1;
-      });
-
-      const students = ["A","B","C","D","E","F"];
-      $("todayTbody").innerHTML = students.map(id=>{
-        const n = counts[id] || 0;
-        const status = n>3 ? `<span class="badge warn">Over 3</span>` :
-                      (n===3 ? `<span class="badge ok">At limit</span>` : `<span class="badge ok">OK</span>`);
-        return `<tr><td>Student ${id}</td><td>${n}/3</td><td>${status}</td></tr>`;
-      }).join("");
-    }
-
-    // 最近 7 天历史
-    async function loadHistory() {
-      const since = new Date(); since.setDate(since.getDate()-7);
-      const q = await db.collection("bathroomLogs")
-        .where("timestamp", ">=", firebase.firestore.Timestamp.fromDate(since))
-        .orderBy("timestamp","desc")
-        .get();
-
-      $("histTbody").innerHTML = q.docs.map(doc=>{
-        const d = doc.data();
-        const t = d.timestamp?.toDate?.() ? d.timestamp.toDate().toLocaleString() : "";
-        return `<tr>
-          <td>${t}</td>
-          <td>${d.studentName || d.studentId}</td>
-          <td>${d.teacherEmail || ""}</td>
-          <td>${d.overLimit ? "Yes" : "No"}</td>
-        </tr>`;
-      }).join("");
-    }
-
-    // 记录一次（超过 3 次阻止）
-    async function logOne() {
-      $("error").textContent = "";
-      const user = auth.currentUser;
-      if (!user) { $("error").textContent = "Please log in first."; return; }
-
-      const id = $("studentSel").value;
-      // 今日次数
-      const q = await db.collection("bathroomLogs")
-        .where("studentId","==", id)
-        .where("timestamp", ">=", firebase.firestore.Timestamp.fromDate(startOfDay()))
-        .get();
-      const count = q.size;
-      if (count >= 3) { $("error").textContent = "This student already used 3 passes today."; return; }
-
-      await db.collection("bathroomLogs").add({
-        studentId: id,
-        studentName: `Student ${id}`,
-        teacherEmail: user.email,
-        timestamp: firebase.firestore.Timestamp.now(),
-        overLimit: false
-      });
-
-      await refreshToday();
-      await loadHistory();
-    }
-  </script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
 <body>
-  <div class="wrap">
-    <!-- 登录卡片 -->
-    <div class="card" id="loginCard">
-      <h2>Teacher Login</h2>
-      <div class="row">
-        <input id="email" type="email" placeholder="Teacher email" />
-        <input id="password" type="password" placeholder="Password" />
-        <button class="primary" onclick="login()">Login</button>
-      </div>
-      <div id="error"></div>
-      <p style="color:#6b7280;margin-top:8px">Use a teacher account you created in Firebase Authentication.</p>
-    </div>
+  <h1>HSA Lubbock · Bathroom Pass</h1>
 
-    <!-- 应用卡片 -->
-    <div class="card" id="appCard" style="display:none">
-      <div class="row" style="justify-content:space-between">
-        <h2>HSA Lubbock · Bathroom Pass</h2>
-        <div class="row">
-          <span id="who" style="margin-right:8px;color:#374151"></span>
-          <button onclick="logout()">Logout</button>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:12px">
-        <label>Student</label>
-        <select id="studentSel">
-          <option value="A">Student A</option>
-          <option value="B">Student B</option>
-          <option value="C">Student C</option>
-          <option value="D">Student D</option>
-          <option value="E">Student E</option>
-          <option value="F">Student F</option>
-        </select>
-        <button class="primary" onclick="logOne()">Record Bathroom Pass</button>
-        <span style="color:#6b7280">Limit is 3 per day (per student).</span>
-      </div>
-
-      <h3 style="margin-top:20px">Today</h3>
-      <table>
-        <thead><tr><th>Student</th><th>Count</th><th>Status</th></tr></thead>
-        <tbody id="todayTbody"></tbody>
-      </table>
-
-      <h3 style="margin-top:20px">Last 7 days</h3>
-      <table>
-        <thead><tr><th>Time</th><th>Student</th><th>Teacher</th><th>Over 3?</th></tr></thead>
-        <tbody id="histTbody"></tbody>
-      </table>
-    </div>
+  <div id="loginDiv">
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button onclick="login()">Login</button>
   </div>
+
+  <div id="appDiv" style="display:none;">
+    <p id="userEmail"></p>
+    <button onclick="logout()">Logout</button>
+    <h3>Student</h3>
+    <select id="studentSelect">
+      <option>Student A</option>
+      <option>Student B</option>
+      <option>Student C</option>
+      <option>Student D</option>
+      <option>Student E</option>
+      <option>Student F</option>
+    </select>
+    <button onclick="logOne()">Record Bathroom Pass</button>
+    <p>Limit is 3 per day (per student).</p>
+
+    <h3>Today</h3>
+    <table border="1">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>Count</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="todayTable"></tbody>
+    </table>
+
+    <h3>Last 7 days</h3>
+    <table border="1">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Student</th>
+          <th>Teacher</th>
+          <th>Over 3?</th>
+        </tr>
+      </thead>
+      <tbody id="historyTable"></tbody>
+    </table>
+  </div>
+
+<script>
+  // Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyBXYe18Z-KN6sS_QdGXEqW8Zb4RBxtYoVM",
+    authDomain: "lubbock-hsa-bathroom-pass.firebaseapp.com",
+    projectId: "lubbock-hsa-bathroom-pass",
+    storageBucket: "lubbock-hsa-bathroom-pass.appspot.com",
+    messagingSenderId: "20266028833",
+    appId: "1:20266028833:web:5219b6cfa07da654807860",
+    measurementId: "G-ENKQZMW0H8"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  function login() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    auth.signInWithEmailAndPassword(email, password)
+      .then(() => {
+        document.getElementById('loginDiv').style.display = 'none';
+        document.getElementById('appDiv').style.display = 'block';
+        document.getElementById('userEmail').innerText = auth.currentUser.email;
+        loadData();
+      })
+      .catch(err => alert(err.message));
+  }
+
+  function logout() {
+    auth.signOut();
+    document.getElementById('loginDiv').style.display = 'block';
+    document.getElementById('appDiv').style.display = 'none';
+  }
+
+  // 修复后的 logOne 函数
+  function logOne() {
+    const student = document.getElementById('studentSelect').value;
+    const teacher = auth.currentUser.email;
+    const todayDate = new Date().toISOString().split('T')[0];
+
+    const todayStart = new Date(todayDate + "T00:00:00");
+    const todayEnd = new Date(todayDate + "T23:59:59");
+
+    db.collection("passes")
+      .where("student", "==", student)
+      .where("time", ">=", todayStart.toISOString())
+      .where("time", "<=", todayEnd.toISOString())
+      .get()
+      .then(snapshot => {
+        if (snapshot.size >= 3) {
+          alert(student + " 已经达到今日 3 次限制");
+          return;
+        }
+        db.collection("passes").add({
+          student: student,
+          teacher: teacher,
+          time: new Date().toISOString()
+        }).then(() => {
+          alert("记录成功！");
+          loadData();
+        });
+      });
+  }
+
+  function loadData() {
+    const todayDate = new Date().toISOString().split('T')[0];
+    const todayStart = new Date(todayDate + "T00:00:00");
+    const todayEnd = new Date(todayDate + "T23:59:59");
+
+    const students = ["Student A","Student B","Student C","Student D","Student E","Student F"];
+    const todayTable = document.getElementById("todayTable");
+    todayTable.innerHTML = "";
+
+    students.forEach(stu => {
+      db.collection("passes")
+        .where("student", "==", stu)
+        .where("time", ">=", todayStart.toISOString())
+        .where("time", "<=", todayEnd.toISOString())
+        .get()
+        .then(snapshot => {
+          const count = snapshot.size;
+          const row = `<tr>
+            <td>${stu}</td>
+            <td>${count}/3</td>
+            <td>${count >= 3 ? "LIMIT" : "OK"}</td>
+          </tr>`;
+          todayTable.innerHTML += row;
+        });
+    });
+
+    const historyTable = document.getElementById("historyTable");
+    historyTable.innerHTML = "";
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    db.collection("passes")
+      .where("time", ">=", sevenDaysAgo.toISOString())
+      .orderBy("time", "desc")
+      .get()
+      .then(snapshot => {
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          const over3 = false; // 可以按需计算
+          const row = `<tr>
+            <td>${d.time}</td>
+            <td>${d.student}</td>
+            <td>${d.teacher}</td>
+            <td>${over3}</td>
+          </tr>`;
+          historyTable.innerHTML += row;
+        });
+      });
+  }
+</script>
 </body>
 </html>
